@@ -8,18 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 核心机会点：官方中转只给「换乘一次的部分列车」（候选枢纽被截断为 Top-N），本工具靠**强制枚举候选枢纽**把被过滤掉的方案补回来。
 
-最终交付：GitHub Pages 前端 + 代理层（本地 Node → 后续可换 Cloudflare Workers）。
+最终交付：GitHub Pages 前端 + Cloudflare Workers 代理层。
 
-现状：设计阶段，还没有产品代码。详细结论查 `docs/`。
+## 现状：空项目
+
+**还没有产品代码。** 仓库现有的 `docs/`、`spike/` 是开工前的**前置探索**资料，不是产品的一部分，不必为它们补测试。
+
+开工时从零建工程，不要被现有目录结构约束。
 
 ## 开发规范
 
-**提交**：每次改动完成任务、通过测试用例后先提交。格式 `type(scope): desc`，type 取
+**测试**：新写的代码要配套测试用例——GitHub Pages 的页面脚本、Cloudflare Workers 的代理脚本都算。提交前必须跑通测试。
+
+**提交**：每次改动完成任务、测试通过后**先提交代码**。格式 `type(scope): desc`，type 取
 `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。
-
-**验证**：改动要有可执行的验证手段，验证通过再提交。`spike/` 下是调研取证用的一次性脚本（会真实请求 12306），不是测试套件。
-
-**依赖**：零第三方依赖，Node 24 内置 `fetch` 足够（本机 `npm install` 会 EPERM）。
 
 **合规**：定位个人低频查询。不做自动下单、验证码识别、多账号、批量抓取、绕过风控。
 
