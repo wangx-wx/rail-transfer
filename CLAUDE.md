@@ -16,6 +16,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 开工时从零建工程，不要被现有目录结构约束。
 
+**产品范围以 `spec/产品方案.md` 为准**（决策清单带 ID 与状态，可追加可推翻）。后续技术方案也归档到 `spec/`。
+
+`docs/`、`spike/` 是前序设计与调研资料（`docs/` 被 .gitignore 忽略，仅存本地），部分结论已过时——见 `spec/产品方案.md` 第六节。
+
 ## 开发规范
 
 **测试**：新写的代码要配套测试用例——GitHub Pages 的页面脚本、Cloudflare Workers 的代理脚本都算。提交前必须跑通测试。
