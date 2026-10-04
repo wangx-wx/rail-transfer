@@ -5,8 +5,20 @@
   "type": "module",
   "description": "12306 中转换乘查询工具 —— 比官方网页给出更多中转方案",
   "scripts": {
-    "test": "node --test",
-    "dev": "node tools/dev-server.mjs",
-    "gen:stations": "node tools/gen-stations.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gen:stations": "node tools/gen-stations.mjs",
+    "dev:server": "node tools/dev-server.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@types/node": "^26.6.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^4.1.11"
   }
 }

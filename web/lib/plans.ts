@@ -15,14 +15,11 @@ import {
   MIN_WAIT_CROSS_STATION,
   LONG_WAIT_THRESHOLD,
   RISK_WAIT_THRESHOLD,
-} from '../../shared/constants.js';
+} from '../../shared/constants.ts';
+import type { AnnotatedPlan, PlanGroup, TransferPlan } from '../../shared/types.ts';
 
-/**
- * 给方案打标记（D12：只标记，不删除）。
- * @param {import('../../shared/types.js').TransferPlan} plan
- * @returns {import('../../shared/types.js').TransferPlan & {flags: PlanFlags}}
- */
-export function annotatePlan(plan) {
+/** 给方案打标记（D12：只标记，不删除）。 */
+export function annotatePlan(plan: TransferPlan): AnnotatedPlan {
   const minWait = plan.sameStation ? MIN_WAIT_SAME_STATION : MIN_WAIT_CROSS_STATION;
   return {
     ...plan,
@@ -39,31 +36,27 @@ export function annotatePlan(plan) {
   };
 }
 
-/**
- * 批量打标记。
- * @param {import('../../shared/types.js').TransferPlan[]} plans
- */
-export function annotatePlans(plans) {
+/** 批量打标记。 */
+export function annotatePlans(plans: TransferPlan[]): AnnotatedPlan[] {
   return plans.map(annotatePlan);
 }
 
 /**
  * 视觉合并同一车次组合（D16）。
  *
- * 同一对 `firstTrainNo → secondTrainNo` 只占一行，换乘站收进 `middleStations`，
+ * 同一对「显示车次」只占一行，换乘站收进 `middleStations`，
  * 代表项取总耗时最小的那条。**不丢信息**：所有换乘站都保留。
  *
- * @param {ReturnType<typeof annotatePlan>[]} plans
- * @returns {Array<{firstTrainNo:string, secondTrainNo:string, middleStations:Array<{name:string, waitMinutes:number, sameStation:boolean}>, best:any, count:number}>}
+ * 注：按 `firstTrainCode`（显示车次）合并，不按 `firstTrainNo`（内部编号）——
+ * 同车接续时两程内部编号相同，会误合并。
  */
-export function mergePlans(plans) {
-  /** @type {Map<string, any>} */
-  const groups = new Map();
+export function mergePlans(plans: AnnotatedPlan[]): PlanGroup[] {
+  const groups = new Map<string, PlanGroup>();
   for (const p of plans) {
-    // 按**显示车次**合并（firstTrainNo 是内部编号，同车接续时会重复）
     const key = `${p.firstTrainCode}|${p.secondTrainCode}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
+    let g = groups.get(key);
+    if (!g) {
+      g = {
         firstTrainCode: p.firstTrainCode,
         secondTrainCode: p.secondTrainCode,
         firstTrainNo: p.firstTrainNo,
@@ -71,9 +64,9 @@ export function mergePlans(plans) {
         middleStations: [],
         best: p,
         count: 0,
-      });
+      };
+      groups.set(key, g);
     }
-    const g = groups.get(key);
     g.count++;
     if (!g.middleStations.some((m) => m.name === p.middleStation)) {
       g.middleStations.push({
@@ -88,28 +81,22 @@ export function mergePlans(plans) {
 }
 
 /** 排序键（D17） */
-const SORTERS = {
+export type SortBy = 'duration' | 'wait';
+
+const SORTERS: Record<SortBy, (a: PlanGroup, b: PlanGroup) => number> = {
   /** 默认：总耗时升序 */
   duration: (a, b) => a.best.totalMinutes - b.best.totalMinutes,
   /** 换乘等待升序 */
   wait: (a, b) => a.best.waitMinutes - b.best.waitMinutes,
 };
 
-/**
- * 排序（D17）。默认总耗时；价格排序待票价接入后再补。
- * @param {ReturnType<typeof mergePlans>} groups
- * @param {'duration'|'wait'} by
- */
-export function sortPlans(groups, by = 'duration') {
-  const cmp = SORTERS[by] || SORTERS.duration;
+/** 排序（D17）。默认总耗时；价格排序待票价接入后再补。 */
+export function sortPlans(groups: PlanGroup[], by: SortBy = 'duration'): PlanGroup[] {
+  const cmp = SORTERS[by] ?? SORTERS.duration;
   return [...groups].sort(cmp);
 }
 
-/**
- * 一站式：标记 → 合并 → 排序。
- * @param {import('../../shared/types.js').TransferPlan[]} plans
- * @param {'duration'|'wait'} by
- */
-export function processPlans(plans, by = 'duration') {
+/** 一站式：标记 → 合并 → 排序。 */
+export function processPlans(plans: TransferPlan[], by: SortBy = 'duration'): PlanGroup[] {
   return sortPlans(mergePlans(annotatePlans(plans)), by);
 }

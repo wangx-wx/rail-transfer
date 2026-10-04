@@ -15,7 +15,7 @@ export const ALLOWED_PATHS = [
   '/lcquery/queryG',
   '/otn/czxx/queryByTrainNo',
   '/otn/leftTicket/queryTicketPrice',
-];
+] as const;
 
 /** 伪装 UA —— 12306 对无 UA 请求会返回 error.html */
 export const UA =
@@ -88,7 +88,19 @@ export const SEAT_OPTIONS = [
  * 已用 spike/tickets.json 实测确认的列见 `confirmed`；其余按经典映射推测，待实测反推。
  * 值为「无」表示无票，纯数字表示余票数，其他（如「有」）表示有票但未公开数量。
  */
-export const SEAT_COLUMNS = [
+/** 座位列定义 */
+export interface SeatColumn {
+  /** leftTicket result[] 的列索引（0-indexed） */
+  index: number;
+  /** 席别编码 */
+  code: string;
+  /** 席别中文名 */
+  name: string;
+  /** 是否已用实测样本确认（false = 经典映射推测，待反推） */
+  confirmed: boolean;
+}
+
+export const SEAT_COLUMNS: readonly SeatColumn[] = [
   { index: 26, code: 'WZ', name: '无座', confirmed: true },
   { index: 29, code: 'YZ', name: '硬座', confirmed: false },
   { index: 28, code: 'YW', name: '硬卧', confirmed: false },
@@ -118,7 +130,7 @@ export const COL = {
   trainDate: 13,
   fromStationNo: 16,
   toStationNo: 17,
-};
+} as const;
 
 /** 无票标记 */
 export const NO_TICKET = '无';

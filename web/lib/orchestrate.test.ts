@@ -1,54 +1,64 @@
 /**
  * 编排层单测（T21）
- * 运行：node --test
+ * 运行：npm test
  */
 
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from 'vitest';
 
-import { chunkHubs, buildHubList, runQuery } from './orchestrate.js';
+import { chunkHubs, buildHubList, runQuery } from './orchestrate.ts';
+import type { QueryApi, SegmentResult } from './orchestrate.ts';
+import type { LeftTicketData, TransferData, UpstreamEnvelope } from '../../shared/types.ts';
 
 // ── chunkHubs ────────────────────────────────────────────
 test('chunkHubs：按 6 切分', () => {
   const chunks = chunkHubs(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], 6);
-  assert.deepEqual(chunks, [['a', 'b', 'c', 'd', 'e', 'f'], ['g', 'h']]);
+  expect(chunks).toEqual([['a', 'b', 'c', 'd', 'e', 'f'], ['g', 'h']]);
 });
 
 test('chunkHubs：空数组 → 空', () => {
-  assert.deepEqual(chunkHubs([], 6), []);
+  expect(chunkHubs([])).toEqual([]);
 });
 
 // ── buildHubList（D10）───────────────────────────────────
 test('buildHubList：官方种子 + 兜底合并去重', () => {
   const hubs = buildHubList(['NKH', 'UUH'], [], ['NKH', 'WHN']);
-  assert.deepEqual(hubs, ['NKH', 'UUH', 'WHN']);
+  expect(hubs).toEqual(['NKH', 'UUH', 'WHN']);
 });
 
 test('buildHubList：剔除出发/到达站', () => {
   const hubs = buildHubList(['VNP', 'NKH'], ['VNP', 'AOH'], ['AOH', 'WHN']);
-  assert.deepEqual(hubs, ['NKH', 'WHN']);
+  expect(hubs).toEqual(['NKH', 'WHN']);
 });
 
 // ── runQuery ─────────────────────────────────────────────
 /** 造一个可控的 api mock */
-function mockApi({ baselineHubs = [], failSegments = [] } = {}) {
-  const calls = { leftTicket: [], transfer: [] };
+function mockApi({ baselineHubs = [], failSegments = [] }: { baselineHubs?: string[]; failSegments?: string[] } = {}): QueryApi & {
+  calls: { leftTicket: Array<{ from: string; to: string; date: string }>; transfer: Array<{ hubs: string[] }> };
+} {
+  const calls = {
+    leftTicket: [] as Array<{ from: string; to: string; date: string }>,
+    transfer: [] as Array<{ hubs: string[] }>,
+  };
   return {
     calls,
     async leftTicket(p) {
       calls.leftTicket.push(p);
-      return { ok: true, data: { data: { result: [] } } };
+      return { ok: true, data: { data: { result: [] } } as UpstreamEnvelope<LeftTicketData> };
     },
     async transfer(p) {
-      calls.transfer.push(p);
+      calls.transfer.push({ hubs: p.hubs });
       const isBaseline = p.hubs.length === 1 && p.hubs[0] === '';
       if (isBaseline) {
-        return { items: [{ key: '', ok: true, data: { data: { middleStationList: baselineHubs } } }] };
+        return {
+          items: [
+            { key: '', ok: true, data: { data: { middleStationList: baselineHubs } } as UpstreamEnvelope<TransferData> },
+          ],
+        };
       }
       const items = p.hubs.map((h) =>
         failSegments.includes(h)
           ? { key: h, ok: false, error: '被拦截：302 → error.html' }
-          : { key: h, ok: true, data: { data: { middleList: [] } } },
+          : { key: h, ok: true, data: { data: { middleList: [] } } as UpstreamEnvelope<TransferData> },
       );
       return { items };
     },
@@ -58,65 +68,66 @@ function mockApi({ baselineHubs = [], failSegments = [] } = {}) {
 test('runQuery：先查直达，再查基线', async () => {
   const api = mockApi({ baselineHubs: ['BME#白马北'] });
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {});
-  assert.equal(api.calls.leftTicket.length, 1);
-  assert.equal(api.calls.transfer[0].hubs[0], ''); // 基线第一
+  expect(api.calls.leftTicket).toHaveLength(1);
+  expect(api.calls.transfer[0]!.hubs[0]).toBe(''); // 基线第一
 });
 
 test('runQuery：回调顺序 —— onDirect → onBaseline → onSegment', async () => {
   const api = mockApi({ baselineHubs: ['NKH#南京南'] });
-  const order = [];
+  const order: string[] = [];
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
     onDirect: () => order.push('direct'),
     onBaseline: () => order.push('baseline'),
     onSegment: () => order.push('segment'),
     onDone: () => order.push('done'),
   });
-  assert.equal(order[0], 'direct');
-  assert.equal(order[1], 'baseline');
-  assert.equal(order.at(-1), 'done');
-  assert.ok(order.includes('segment'));
+  expect(order[0]).toBe('direct');
+  expect(order[1]).toBe('baseline');
+  expect(order.at(-1)).toBe('done');
+  expect(order).toContain('segment');
 });
 
 test('runQuery：枢纽分多段，逐段回调', async () => {
   const api = mockApi({ baselineHubs: [] });
-  const segments = [];
+  const segments: SegmentResult[] = [];
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
     onSegment: (s) => segments.push(s),
   });
   // 内置兜底 20 个枢纽，排除 VNP/AOH 后按 6 分段
-  assert.ok(segments.length >= 3);
-  assert.equal(segments[0].index, 0);
-  assert.equal(segments[0].hubs.length, 6);
-  assert.equal(segments.at(-1).total, segments.length);
+  expect(segments.length).toBeGreaterThanOrEqual(3);
+  expect(segments[0]!.index).toBe(0);
+  expect(segments[0]!.hubs).toHaveLength(6);
+  expect(segments.at(-1)!.total).toBe(segments.length);
 });
 
 test('runQuery：某段真错误 → 该段 error，其余段照常（T13）', async () => {
   const api = mockApi({ baselineHubs: [], failSegments: ['UUH'] });
-  const segments = [];
+  const segments: SegmentResult[] = [];
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
     onSegment: (s) => segments.push(s),
   });
-  const bad = segments.find((s) => s.hubs.includes('UUH'));
-  assert.match(bad.items.find((x) => x.key === 'UUH').error, /error\.html/);
+  const bad = segments.find((s) => s.hubs.includes('UUH'))!;
+  expect(bad.items.find((x) => x.key === 'UUH')!.error).toMatch(/error\.html/);
   // 其余段正常
-  assert.ok(segments.some((s) => s.hubs.some((h) => h !== 'UUH' && s.items.find((x) => x.key === h)?.ok)));
+  expect(
+    segments.some((s) => s.hubs.some((h) => h !== 'UUH' && s.items.find((x) => x.key === h)?.ok)),
+  ).toBe(true);
 });
 
 test('runQuery：基线失败不阻断后续枚举', async () => {
-  const api = {
-    calls: [],
+  const api: QueryApi = {
     async leftTicket() {
-      return { ok: true, data: null };
+      return { ok: true, data: { data: { result: [] } } };
     },
     async transfer(p) {
       if (p.hubs[0] === '') throw new Error('baseline down');
-      return { items: p.hubs.map((h) => ({ key: h, ok: true, data: {} })) };
+      return { items: p.hubs.map((h) => ({ key: h, ok: true, data: { data: {} } })) };
     },
   };
-  const segments = [];
+  const segments: SegmentResult[] = [];
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
-    onBaseline: (b) => assert.equal(b.ok, false),
+    onBaseline: (b) => expect(b.ok).toBe(false),
     onSegment: (s) => segments.push(s),
   });
-  assert.ok(segments.length >= 3); // 兜底枢纽仍然枚举了
+  expect(segments.length).toBeGreaterThanOrEqual(3); // 兜底枢纽仍然枚举了
 });

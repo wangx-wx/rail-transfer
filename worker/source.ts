@@ -8,17 +8,35 @@
  * **不做业务解析**（解析在前端）。只负责区分「真错误」与「正常空结果」（T14）。
  */
 
-import { KYFW, UA, COL } from '../shared/constants.js';
+import { KYFW, UA, COL } from '../shared/constants.ts';
+import type { FetchResult, UpstreamEnvelope } from '../shared/types.ts';
+
+/** 可注入的 fetch（测试用 mock；生产用全局 fetch） */
+export type FetchLike = typeof globalThis.fetch;
+
+/** 取数层可注入依赖 */
+export interface SourceDeps {
+  fetchImpl?: FetchLike;
+}
+
+/** 上游请求的返回：正常拿到 Response，异常包成 `{error}` */
+type RawResponse = Response | { error: string };
+
+/** classify 的判定结果 */
+export interface ClassifyResult {
+  ok: boolean;
+  error?: string;
+  /** 是否可重试（5xx / 网络失败为 true） */
+  retriable?: boolean;
+}
 
 /**
  * 提取 Set-Cookie。
  * 优先标准 `getSetCookie()`，回退合并头（部分运行时只有 `get`）。
- * @param {Response} res
- * @returns {string[]}
  */
-export function extractCookies(res) {
+export function extractCookies(res: Response): string[] {
   const h = res.headers;
-  if (typeof h?.getSetCookie === 'function') {
+  if (typeof h.getSetCookie === 'function') {
     try {
       const list = h.getSetCookie();
       if (list && list.length) return list;
@@ -26,7 +44,7 @@ export function extractCookies(res) {
       /* 回退到合并头 */
     }
   }
-  const merged = h?.get?.('set-cookie');
+  const merged = h.get('set-cookie');
   return merged ? [merged] : [];
 }
 
@@ -36,14 +54,13 @@ export function extractCookies(res) {
  * 真错误：网络失败 / HTTP 非 200 / 被 WAF 拦成 302→error.html / 非 JSON。
  * **空 data 不算错误**——5.11：`status` 永远为 true，空 data 只表示「无方案」。
  *
- * @param {Response|{error:string}} res
- * @param {string} text 响应体原文
- * @returns {{ok: boolean, error?: string, retriable?: boolean}}
+ * @param res 上游响应（或包装过的网络错误）
+ * @param text 响应体原文
  */
-export function classify(res, text) {
-  if (res && res.error) return { ok: false, error: `网络失败: ${res.error}`, retriable: true };
+export function classify(res: RawResponse, text: string): ClassifyResult {
+  if ('error' in res) return { ok: false, error: `网络失败: ${res.error}`, retriable: true };
 
-  const location = res.headers?.get?.('location') || '';
+  const location = res.headers.get('location') ?? '';
   if (location.includes('error.html')) {
     return { ok: false, error: '被拦截：302 → error.html（WAF 或越界）', retriable: false };
   }
@@ -62,10 +79,14 @@ export function classify(res, text) {
  * 发一次上游请求，返回 `{res, text}`。
  * 网络异常不抛出，而是包成 `{error}`，交由 `classify` 统一处理。
  */
-async function request(path, params, { cookie = '', fetchImpl = globalThis.fetch } = {}) {
+async function request(
+  path: string,
+  params: Record<string, string>,
+  { cookie = '', fetchImpl = globalThis.fetch }: SourceDeps & { cookie?: string } = {},
+): Promise<{ res: RawResponse; text: string }> {
   const url = new URL(path, KYFW);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const headers = { 'User-Agent': UA, Referer: `${KYFW}/otn/leftTicket/init` };
+  const headers: Record<string, string> = { 'User-Agent': UA, Referer: `${KYFW}/otn/leftTicket/init` };
   if (cookie) headers.Cookie = cookie;
   try {
     const res = await fetchImpl(url.toString(), { headers, redirect: 'manual' });
@@ -78,33 +99,43 @@ async function request(path, params, { cookie = '', fetchImpl = globalThis.fetch
 
 /**
  * 取余票接口所需的 cookie（T8：每次现取现用，不缓存）。
+ *
  * 必须先访问 init，否则 `/otn/leftTicket/*` 会被 WAF 拦成 302（产品方案 5.3）。
- * @returns {Promise<string>} `k=v; k=v` 形式的 Cookie 头；失败返回空串
+ *
+ * ⚠️ init 返回的是 HTML 页面（text/html），**不是 JSON**，不能用 `classify`
+ * （它会判「非 JSON」为错误而丢弃 cookie）。见技术方案 §5.2。
+ *
+ * @returns `k=v; k=v` 形式的 Cookie 头；失败返回空串
  */
-export async function initCookie({ fetchImpl = globalThis.fetch } = {}) {
-  const { res, text } = await request('/otn/leftTicket/init', {}, { fetchImpl });
-  // ⚠️ init 返回的是 HTML 页面（text/html），**不是 JSON**，
-  // 不能用 classify（它会判「非 JSON」为错误而丢弃 cookie）。
-  // 只判断是否为真错误：网络失败 / 被拦 / HTTP 非 200。
-  if (res && res.error) return '';
+export async function initCookie(deps: SourceDeps = {}): Promise<string> {
+  const { res } = await request('/otn/leftTicket/init', {}, deps);
+  if ('error' in res) return '';
   if (res.status !== 200) return '';
-  const location = res.headers?.get?.('location') || '';
-  if (location.includes('error.html')) return '';
+  if ((res.headers.get('location') ?? '').includes('error.html')) return '';
   return extractCookies(res)
     .map((s) => s.split(';')[0])
     .join('; ');
+}
+
+/** 查询余票（直达）的参数 */
+export interface LeftTicketParams extends SourceDeps {
+  from: string;
+  to: string;
+  /** 'YYYY-MM-DD' */
+  date: string;
 }
 
 /**
  * 查询余票（直达）。
  *
  * 城市粒度（D6）：传城市代表站码即可，**服务端自动展开全城**（产品方案 5.2）。
- *
- * @param {{from:string, to:string, date:string, fetchImpl?:Function}} opts
- *        date 格式 'YYYY-MM-DD'
- * @returns {Promise<{ok:boolean, data?:any, error?:string}>} data 为上游原始 JSON
  */
-export async function fetchLeftTicket({ from, to, date, fetchImpl = globalThis.fetch }) {
+export async function fetchLeftTicket({
+  from,
+  to,
+  date,
+  fetchImpl = globalThis.fetch,
+}: LeftTicketParams): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
   const cookie = await initCookie({ fetchImpl });
   const { res, text } = await request(
     '/otn/leftTicket/queryG',
@@ -117,8 +148,17 @@ export async function fetchLeftTicket({ from, to, date, fetchImpl = globalThis.f
     { cookie, fetchImpl },
   );
   const c = classify(res, text);
-  if (!c.ok) return { ok: false, error: c.error };
+  if (!c.ok) return { ok: false, error: c.error ?? '未知错误' };
   return { ok: true, data: JSON.parse(text) };
+}
+
+/** 查询单个枢纽中转方案的参数 */
+export interface TransferParams extends SourceDeps {
+  from: string;
+  to: string;
+  date: string;
+  /** 枢纽站码；空串 = 官方默认 Top-N */
+  hub?: string;
 }
 
 /**
@@ -126,11 +166,14 @@ export async function fetchLeftTicket({ from, to, date, fetchImpl = globalThis.f
  *
  * ⚠️ 中转接口**不做城市展开**（产品方案 5.2），必须对城市内每个站各查一次。
  * ⚠️ `middle_station` 传空 = 官方默认 Top-N；传枢纽码 = 强制枚举该枢纽（核心价值）。
- *
- * @param {{from:string, to:string, date:string, hub:string, fetchImpl?:Function}} opts
- * @returns {Promise<{ok:boolean, data?:any, error?:string}>}
  */
-export async function fetchTransfer({ from, to, date, hub = '', fetchImpl = globalThis.fetch }) {
+export async function fetchTransfer({
+  from,
+  to,
+  date,
+  hub = '',
+  fetchImpl = globalThis.fetch,
+}: TransferParams): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
   const { res, text } = await request(
     '/lcquery/queryG',
     {
@@ -147,31 +190,53 @@ export async function fetchTransfer({ from, to, date, hub = '', fetchImpl = glob
     { fetchImpl },
   );
   const c = classify(res, text);
-  if (!c.ok) return { ok: false, error: c.error };
+  if (!c.ok) return { ok: false, error: c.error ?? '未知错误' };
   return { ok: true, data: JSON.parse(text) };
+}
+
+/** 批量查询多个枢纽的参数 */
+export interface TransferBatchParams extends SourceDeps {
+  from: string;
+  to: string;
+  date: string;
+  hubs: string[];
 }
 
 /**
  * 批量查询多个枢纽（供 `/api/transfer` 扇出端点使用）。
  * **段内串行、不加 sleep**（T12）。单项失败不影响其余（T13）。
- *
- * @param {{from:string, to:string, date:string, hubs:string[], fetchImpl?:Function}} opts
- * @returns {Promise<Array<{key:string, ok:boolean, data?:any, error?:string}>>}
  */
-export async function fetchTransferBatch({ from, to, date, hubs, fetchImpl = globalThis.fetch }) {
-  const out = [];
+export async function fetchTransferBatch({
+  from,
+  to,
+  date,
+  hubs,
+  fetchImpl = globalThis.fetch,
+}: TransferBatchParams): Promise<Array<{ key: string; ok: boolean; data?: unknown; error?: string }>> {
+  const out: Array<{ key: string; ok: boolean; data?: unknown; error?: string }> = [];
   for (const hub of hubs) {
     const r = await fetchTransfer({ from, to, date, hub, fetchImpl });
-    out.push({ key: hub, ...r });
+    out.push(r.ok ? { key: hub, ok: true, data: r.data } : { key: hub, ok: false, error: r.error });
   }
   return out;
 }
 
-/**
- * 查询经停站序列（买短乘长 D24 用；产品方案 5.7）。
- * @param {{trainNo:string, fromStationNo:string, toStationNo:string, date:string, fetchImpl?:Function}} opts
- */
-export async function fetchStopover({ trainNo, fromStationNo, toStationNo, date, fetchImpl = globalThis.fetch }) {
+/** 查询经停站的参数 */
+export interface StopoverParams extends SourceDeps {
+  trainNo: string;
+  fromStationNo: string;
+  toStationNo: string;
+  date: string;
+}
+
+/** 查询经停站序列（买短乘长 D24 用；产品方案 5.7）。 */
+export async function fetchStopover({
+  trainNo,
+  fromStationNo,
+  toStationNo,
+  date,
+  fetchImpl = globalThis.fetch,
+}: StopoverParams): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
   const { res, text } = await request(
     '/otn/czxx/queryByTrainNo',
     {
@@ -183,15 +248,28 @@ export async function fetchStopover({ trainNo, fromStationNo, toStationNo, date,
     { fetchImpl },
   );
   const c = classify(res, text);
-  if (!c.ok) return { ok: false, error: c.error };
+  if (!c.ok) return { ok: false, error: c.error ?? '未知错误' };
   return { ok: true, data: JSON.parse(text) };
 }
 
-/**
- * 查询票价（D20/D21：直达展示参考价，中转只查第一条）。
- * @param {{trainNo:string, fromStationNo:string, toStationNo:string, seatTypes:string, date:string, fetchImpl?:Function}} opts
- */
-export async function fetchPrice({ trainNo, fromStationNo, toStationNo, seatTypes, date, fetchImpl = globalThis.fetch }) {
+/** 查询票价的参数 */
+export interface PriceParams extends SourceDeps {
+  trainNo: string;
+  fromStationNo: string;
+  toStationNo: string;
+  seatTypes: string;
+  date: string;
+}
+
+/** 查询票价（D20/D21：直达展示参考价，中转只查第一条）。 */
+export async function fetchPrice({
+  trainNo,
+  fromStationNo,
+  toStationNo,
+  seatTypes,
+  date,
+  fetchImpl = globalThis.fetch,
+}: PriceParams): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
   const { res, text } = await request(
     '/otn/leftTicket/queryTicketPrice',
     {
@@ -204,7 +282,7 @@ export async function fetchPrice({ trainNo, fromStationNo, toStationNo, seatType
     { fetchImpl },
   );
   const c = classify(res, text);
-  if (!c.ok) return { ok: false, error: c.error };
+  if (!c.ok) return { ok: false, error: c.error ?? '未知错误' };
   return { ok: true, data: JSON.parse(text) };
 }
 

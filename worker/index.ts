@@ -10,18 +10,31 @@
  *   GET /api/stopover     经停站
  *   GET /api/price        票价
  *
- * 口令（T15）：读 `env.ACCESS_TOKEN`。**未配置时不做校验**，便于本地开发
- * （满足「不设环境变量」的根本要求）；生产部署时在 Worker 环境变量里设上即生效。
+ * 口令（T15）：读 `env.ACCESS_TOKEN`。**未配置时不做校验**，便于本地开发；
+ * 生产部署时在 Worker 环境变量里设上即生效。
  *
  * 缓存（T9/T10）：按整段 URL 为键，显式 `Cache-Control: max-age=300`。
  * ⚠️ 不依赖 Edge TTL 默认值（Free 版最小值 2 小时）。
  */
 
-import { fetchLeftTicket, fetchTransferBatch, fetchStopover, fetchPrice } from './source.js';
+import { fetchLeftTicket, fetchTransferBatch, fetchStopover, fetchPrice } from './source.ts';
+import type { FetchLike } from './source.ts';
+
+/** Worker 环境变量 */
+export interface Env {
+  /** 访问口令；未设置则不校验（T15） */
+  ACCESS_TOKEN?: string;
+}
+
+/** 可注入依赖（测试用） */
+export interface HandlerDeps {
+  fetchImpl?: FetchLike;
+  cache?: Cache;
+}
 
 const CACHE_TTL = 300; // 秒，D30「余票 3~5 分钟」
 
-const CORS = {
+const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'X-Access-Token',
@@ -29,66 +42,66 @@ const CORS = {
 };
 
 /** 统一 JSON 响应 */
-function json(body, status = 200, extra = {}) {
+function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json;charset=utf-8', ...CORS, ...extra },
   });
 }
 
-/**
- * 路由表：路径 → 处理函数（接收 URLSearchParams，返回 body 对象）
- * @type {Record<string, (q: URLSearchParams, deps: any) => Promise<any>>}
- */
-const ROUTES = {
-  '/api/left-ticket': async (q, deps) => {
-    const r = await fetchLeftTicket({
-      from: q.get('from'),
-      to: q.get('to'),
-      date: q.get('date'),
-      ...deps,
-    });
-    return r;
-  },
+/** 路由处理函数签名 */
+type RouteHandler = (q: URLSearchParams, deps: HandlerDeps) => Promise<{ ok?: boolean; [k: string]: unknown }>;
+
+/** 从查询参数取值，缺失时抛错（上游会返回空 data，不如早失败） */
+function req(q: URLSearchParams, key: string): string {
+  const v = q.get(key);
+  if (v === null) throw new Error(`缺少参数 ${key}`);
+  return v;
+}
+
+/** 路由表：路径 → 处理函数 */
+const ROUTES: Record<string, RouteHandler> = {
+  '/api/left-ticket': (q, deps) =>
+    fetchLeftTicket({ from: req(q, 'from'), to: req(q, 'to'), date: req(q, 'date'), ...deps }),
   '/api/transfer': async (q, deps) => {
-    const hubs = (q.get('hubs') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const hubs = (q.get('hubs') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const items = await fetchTransferBatch({
-      from: q.get('from'),
-      to: q.get('to'),
-      date: q.get('date'),
+      from: req(q, 'from'),
+      to: req(q, 'to'),
+      date: req(q, 'date'),
       hubs,
       ...deps,
     });
     return { ok: true, items };
   },
-  '/api/stopover': async (q, deps) =>
+  '/api/stopover': (q, deps) =>
     fetchStopover({
-      trainNo: q.get('train_no'),
-      fromStationNo: q.get('from_station_no'),
-      toStationNo: q.get('to_station_no'),
-      date: q.get('date'),
+      trainNo: req(q, 'train_no'),
+      fromStationNo: req(q, 'from_station_no'),
+      toStationNo: req(q, 'to_station_no'),
+      date: req(q, 'date'),
       ...deps,
     }),
-  '/api/price': async (q, deps) =>
+  '/api/price': (q, deps) =>
     fetchPrice({
-      trainNo: q.get('train_no'),
-      fromStationNo: q.get('from_station_no'),
-      toStationNo: q.get('to_station_no'),
-      seatTypes: q.get('seat_types'),
-      date: q.get('date'),
+      trainNo: req(q, 'train_no'),
+      fromStationNo: req(q, 'from_station_no'),
+      toStationNo: req(q, 'to_station_no'),
+      seatTypes: req(q, 'seat_types'),
+      date: req(q, 'date'),
       ...deps,
     }),
 };
 
-/**
- * 处理一个请求。
- *
- * @param {Request} request
- * @param {{ACCESS_TOKEN?: string}} env
- * @param {{fetchImpl?: Function, cache?: any}} [deps] 可注入依赖（测试用）
- * @returns {Promise<Response>}
- */
-export async function handleRequest(request, env = {}, deps = {}) {
+/** 处理一个请求（导出以便测试直接调用）。 */
+export async function handleRequest(
+  request: Request,
+  env: Env = {},
+  deps: HandlerDeps = {},
+): Promise<Response> {
   const url = new URL(request.url);
 
   // 预检
@@ -104,7 +117,8 @@ export async function handleRequest(request, env = {}, deps = {}) {
   }
 
   // 缓存（T9/T10）：以整段 URL 为键
-  const cache = deps.cache ?? globalThis.caches?.default;
+  // Workers 运行时 caches.default 可用；Node 下无 caches，静默降级
+  const cache = deps.cache ?? (globalThis.caches as { default?: Cache } | undefined)?.default;
   const cacheKey = new Request(url.toString(), { method: 'GET' });
   if (cache) {
     try {
@@ -115,7 +129,7 @@ export async function handleRequest(request, env = {}, deps = {}) {
     }
   }
 
-  let body;
+  let body: { ok?: boolean; [k: string]: unknown };
   try {
     body = await handler(url.searchParams, deps);
   } catch (e) {
@@ -138,7 +152,7 @@ export async function handleRequest(request, env = {}, deps = {}) {
 }
 
 export default {
-  fetch(request, env, ctx) {
+  fetch(request: Request, env: Env): Promise<Response> {
     return handleRequest(request, env, {});
   },
 };

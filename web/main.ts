@@ -3,43 +3,59 @@
  *
  * 查询流程（用户选定）：**直达与中转分开查**，各查各的，互不干扰。
  * 结果共用一个面板：点「查直达」显示直达，点「查中转」显示中转。
- * 零构建、原生 ESM：浏览器直接加载本文件。
  */
 
-import { CITY_STATIONS, ALL_CITIES, STATION_NAMES } from './data/stations.js';
-import { PRESALE_DAYS } from '../shared/constants.js';
-import { API_BASE } from './config.js';
-import * as api from './lib/api.js';
-import { runQuery } from './lib/orchestrate.js';
-import { parseLeftTicket, parseTransfer } from './lib/parse.js';
-import { processPlans } from './lib/plans.js';
-import { renderTrains, renderTransfers } from './lib/render.js';
+import { CITY_STATIONS, ALL_CITIES, STATION_NAMES } from './data/stations.ts';
+import { PRESALE_DAYS } from '../shared/constants.ts';
+import { API_BASE } from './config.ts';
+import * as api from './lib/api.ts';
+import { runQuery } from './lib/orchestrate.ts';
+import { parseLeftTicket, parseTransfer } from './lib/parse.ts';
+import { processPlans } from './lib/plans.ts';
+import { renderTrains, renderTransfers } from './lib/render.ts';
+import type { TransferPlan } from '../shared/types.ts';
 
-const $ = (id) => document.getElementById(id);
+/** 取元素并断言非空（index.html 保证存在） */
+function $(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`缺少元素 #${id}`);
+  return el;
+}
+
+/** 取输入类元素（带 value） */
+function $input(id: string): HTMLInputElement | HTMLSelectElement {
+  return $(id) as HTMLInputElement | HTMLSelectElement;
+}
+
+/** 解析后的城市 */
+interface ResolvedCity {
+  code: string;
+  stations: string[];
+}
 
 /** 城市名 → {code, stations} */
-function resolveCity(name) {
+function resolveCity(name: string): ResolvedCity | null {
   const n = (name || '').trim();
-  const major = CITY_STATIONS[n];
+  const major = (CITY_STATIONS as Record<string, { code: string; stations: string[] } | undefined>)[n];
   if (major) return { code: major.code, stations: major.stations };
-  const code = ALL_CITIES[n];
+  const code = (ALL_CITIES as Record<string, string | undefined>)[n];
   return code ? { code, stations: [code] } : null;
 }
 
 /** 填充城市候选（datalist） */
-function fillCities() {
+function fillCities(): void {
   const names = [...new Set([...Object.keys(CITY_STATIONS), ...Object.keys(ALL_CITIES)])];
   $('cities').innerHTML = names.map((n) => `<option value="${n}"></option>`).join('');
 }
 
 /** 默认日期 = 今天 + 3 天 */
-function defaultDate() {
+function defaultDate(): string {
   const t = new Date(Date.now() + 8 * 3600e3 + 3 * 86400e3);
   return t.toISOString().slice(0, 10);
 }
 
 /** 校验日期在预售期内（D32） */
-function checkDate(date) {
+function checkDate(date: string): string | null {
   const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
   const max = new Date(Date.now() + 8 * 3600e3 + PRESALE_DAYS * 86400e3).toISOString().slice(0, 10);
   if (date < today) return '日期早于今天，无法查询';
@@ -47,51 +63,58 @@ function checkDate(date) {
   return null;
 }
 
-/** 读取并校验表单，返回查询上下文或 null（已设置错误状态） */
-function readForm() {
-  const date = $('date').value;
-  const err = checkDate(date);
-  if (err) return setStatusErr(err);
-  const from = resolveCity($('from').value);
-  const to = resolveCity($('to').value);
-  if (!from) return setStatusErr(`未识别的城市：${$('from').value}`);
-  if (!to) return setStatusErr(`未识别的城市：${$('to').value}`);
-  return {
-    from,
-    to,
-    date,
-    seat: $('seat').value,
-    token: $('token').value.trim(),
-  };
+/** 查询上下文 */
+interface QueryContext {
+  from: ResolvedCity;
+  to: ResolvedCity;
+  date: string;
+  seat: string;
+  token: string;
 }
 
-function setStatusErr(msg) {
+/** 读取并校验表单，返回查询上下文或 null（已设置错误状态） */
+function readForm(): QueryContext | null {
+  const date = $input('date').value;
+  const err = checkDate(date);
+  if (err) return setStatusErr(err);
+  const from = resolveCity($input('from').value);
+  const to = resolveCity($input('to').value);
+  if (!from) return setStatusErr(`未识别的城市：${$input('from').value}`);
+  if (!to) return setStatusErr(`未识别的城市：${$input('to').value}`);
+  return { from, to, date, seat: $input('seat').value, token: $input('token').value.trim() };
+}
+
+function setStatusErr(msg: string): null {
   setStatus(msg, 'err');
   return null;
 }
 
-function setPanel(html) {
+function setPanel(html: string): void {
   $('panel').innerHTML = html;
 }
 
 let running = false;
 
 /** 查直达 */
-async function onDirect() {
+async function onDirect(): Promise<void> {
   if (running) return;
   const ctx = readForm();
   if (!ctx) return;
 
   running = true;
-  $('btn-direct').disabled = true;
+  ($('btn-direct') as HTMLButtonElement).disabled = true;
   setPanel('<div class="empty">查询中…</div>');
   setStatus('正在查询直达…');
 
   try {
-    const r = await api.leftTicket({ from: ctx.from.code, to: ctx.to.code, date: ctx.date }, { token: ctx.token, base: API_BASE });
+    const r = await api.leftTicket(
+      { from: ctx.from.code, to: ctx.to.code, date: ctx.date },
+      { token: ctx.token, base: API_BASE },
+    );
     if (!r.ok) {
       setPanel(`<div class="empty err">直达查询失败：${r.error}</div>`);
-      return setStatus(`直达查询失败：${r.error}`, 'err');
+      setStatus(`直达查询失败：${r.error}`, 'err');
+      return;
     }
     const { trains, stationMap } = parseLeftTicket(r.data);
     // 合并全量站名表（直达响应自带的 map 只覆盖少数站）
@@ -103,23 +126,23 @@ async function onDirect() {
     setStatus(`查询出错：${e}`, 'err');
   } finally {
     running = false;
-    $('btn-direct').disabled = false;
+    ($('btn-direct') as HTMLButtonElement).disabled = false;
   }
 }
 
 /** 查中转 */
-async function onTransfer() {
+async function onTransfer(): Promise<void> {
   if (running) return;
   const ctx = readForm();
   if (!ctx) return;
 
   running = true;
-  $('btn-transfer').disabled = true;
+  ($('btn-transfer') as HTMLButtonElement).disabled = true;
   setPanel('<div class="empty">查询中…</div>');
   setStatus('正在查询官方基线…');
 
-  const allPlans = [];
-  const renderPanel = () => setPanel(renderTransfers(processPlans(allPlans)));
+  const allPlans: TransferPlan[] = [];
+  const renderPanel = (): void => setPanel(renderTransfers(processPlans(allPlans)));
 
   try {
     await runQuery(
@@ -131,7 +154,10 @@ async function onTransfer() {
       {
         onDirect: () => {}, // 中转查询不展示直达
         onBaseline: (r) => {
-          if (!r.ok) return setStatus('官方基线查询失败，改用内置枢纽兜底…', 'warn');
+          if (!r.ok) {
+            setStatus('官方基线查询失败，改用内置枢纽兜底…', 'warn');
+            return;
+          }
           for (const item of r.items) {
             if (item.ok && item.data) allPlans.push(...parseTransfer(item.data).plans);
           }
@@ -156,17 +182,17 @@ async function onTransfer() {
     setStatus(`查询出错：${e}`, 'err');
   } finally {
     running = false;
-    $('btn-transfer').disabled = false;
+    ($('btn-transfer') as HTMLButtonElement).disabled = false;
   }
 }
 
-function setStatus(text, cls = '') {
+function setStatus(text: string, cls = ''): void {
   const el = $('status');
   el.className = 'status ' + cls;
   el.textContent = text;
 }
 
 fillCities();
-$('date').value = defaultDate();
+$input('date').value = defaultDate();
 $('btn-direct').addEventListener('click', onDirect);
 $('btn-transfer').addEventListener('click', onTransfer);

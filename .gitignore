@@ -21,3 +21,5 @@ Thumbs.db
 
 spike
 docs
+# 构建产物
+dist/

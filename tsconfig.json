@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+
+    /* 严格模式：12306 字段无文档，靠类型约束减少踩坑 */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    /* 只做类型检查，产出交给 Vite / wrangler */
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* 路径别名（T5）：shared 被 web 与 worker 共用 */
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["web/**/*.ts", "worker/**/*.ts", "shared/**/*.ts", "*.ts"],
+  "exclude": ["node_modules", "dist", "docs", "spike", "tools"]
+}
