@@ -8,7 +8,8 @@
  *
  * 用法（部署后）：
  *   /                  基础探测（4 次子请求）
- *   /?full=1           完整枚举（约 34 次子请求，测上限压力）
+ *   /?full=1           完整枚举（34 次子请求，测上限压力）
+ *   /?burst=N          连续发 N 次同一请求（测 isolate 复用行为，默认 1）
  *   /?date=2026-10-08  指定日期（默认 = 北京时间 +3 天）
  *
  * 注意：日期必须落在 [今天, 今天+14] 内，越界会返回 302 → error.html
@@ -18,23 +19,31 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 
 const KYFW = 'https://kyfw.12306.cn';
 
-/** 子请求计数器：Cloudflare Free 版上限 50/次 */
-let SUB = 0;
+/**
+ * 子请求计数器。
+ * ⚠️ 必须是 invocation 内的局部状态，不能放模块顶层：
+ * Workers 会复用 isolate，模块级变量跨请求累积（实测踩到，数字翻倍）。
+ * 用闭包把计数器绑定到本次 invocation。
+ */
+function makeCounter() {
+  const state = { n: 0 };
+  return {
+    probe: async (url, headers = {}) => {
+      state.n++;
+      try {
+        return await fetch(url, { headers: { 'User-Agent': UA, ...headers }, redirect: 'manual' });
+      } catch (e) {
+        return { error: String(e) };
+      }
+    },
+    get count() { return state.n; },
+  };
+}
 
 /** 默认日期 = 北京时间 +3 天 */
 function defaultDate() {
   const t = new Date(Date.now() + 8 * 3600 * 1000 + 3 * 86400 * 1000);
   return t.toISOString().slice(0, 10);
-}
-
-/** 发一次请求，永不抛出，失败时返回 {error} */
-async function probe(url, headers = {}) {
-  SUB++;
-  try {
-    return await fetch(url, { headers: { 'User-Agent': UA, ...headers }, redirect: 'manual' });
-  } catch (e) {
-    return { error: String(e) };
-  }
 }
 
 /** 提取 Set-Cookie（优先标准 getSetCookie，回退合并头） */
@@ -67,12 +76,18 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     const full = url.searchParams.get('full') === '1';
+    const burst = Math.max(1, Math.min(20, parseInt(url.searchParams.get('burst') || '1', 10) || 1));
     const date = url.searchParams.get('date') || defaultDate();
 
+    // 每次 invocation 独立的计数器（见 makeCounter 注释）
+    const counter = makeCounter();
+    const probe = counter.probe;
+
     const out = {
-      _说明: 'subrequests 为本次执行的子请求总数；Free 版上限 50/次',
+      _说明: 'subrequests 为【本次 invocation】的子请求数；Free 版上限 50/次',
       date,
       full,
+      burst,
       steps: [],
     };
     const log = (name, obj) => out.steps.push({ 步骤: name, ...obj });
@@ -142,10 +157,30 @@ export default {
       });
     }
 
-    out.subrequests = SUB;
-    out.判定 = SUB > 50
-      ? `已超 Free 版 50/次上限（${SUB} 次）——本次应已报错`
-      : `未超上限（${SUB}/50）`;
+    // ── 5. 对照实验：连续 N 次，验证「子请求配额是否按 invocation 独立计算」──
+    // 若 N=3 时每轮都是 4 次（而非累积 4/8/12），说明配额按次独立 → 扇出转发可行。
+    if (burst > 1) {
+      const rounds = [];
+      for (let i = 0; i < burst; i++) {
+        const c = makeCounter();
+        await c.probe(`${KYFW}/otn/leftTicket/init`);
+        await c.probe(`${KYFW}/lcquery/queryG?train_date=${date}&from_station_telecode=LZJ` +
+          `&to_station_telecode=HZH&middle_station=&result_index=0&can_query=Y&isShowWZ=N` +
+          `&purpose_codes=00&channel=E`, { Referer: `${KYFW}/otn/lcQuery/init` });
+        rounds.push(c.count);
+      }
+      log('5_配额对照', {
+        轮次计数: rounds,
+        判定: new Set(rounds).size === 1
+          ? `每轮均为 ${rounds[0]} 次，配额按 invocation 独立 → 扇出转发可行`
+          : `计数累积（${rounds.join('→')}）→ 配额不独立，扇出方案不成立`,
+      });
+    }
+
+    out.subrequests = counter.count;
+    out.判定 = counter.count > 50
+      ? `已超 Free 版 50/次上限（${counter.count} 次）——本次应已报错`
+      : `未超上限（${counter.count}/50）`;
 
     return new Response(JSON.stringify(out, null, 2), {
       headers: { 'content-type': 'application/json;charset=utf-8' },
