@@ -83,8 +83,13 @@ async function request(path, params, { cookie = '', fetchImpl = globalThis.fetch
  */
 export async function initCookie({ fetchImpl = globalThis.fetch } = {}) {
   const { res, text } = await request('/otn/leftTicket/init', {}, { fetchImpl });
-  const c = classify(res, text);
-  if (!c.ok) return '';
+  // ⚠️ init 返回的是 HTML 页面（text/html），**不是 JSON**，
+  // 不能用 classify（它会判「非 JSON」为错误而丢弃 cookie）。
+  // 只判断是否为真错误：网络失败 / 被拦 / HTTP 非 200。
+  if (res && res.error) return '';
+  if (res.status !== 200) return '';
+  const location = res.headers?.get?.('location') || '';
+  if (location.includes('error.html')) return '';
   return extractCookies(res)
     .map((s) => s.split(';')[0])
     .join('; ');

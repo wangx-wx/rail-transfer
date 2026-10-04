@@ -95,6 +95,26 @@ test('initCookie：拼出 Cookie 头', async () => {
   assert.match(f.calls[0].url, /\/otn\/leftTicket\/init$/);
 });
 
+test('initCookie：init 返回 HTML（非 JSON）仍能取到 cookie', async () => {
+  // 实测：init 的 content-type 是 text/html，不是 JSON。
+  // 早期实现用 classify 判「非 JSON」为错误 → cookie 丢失 → 后续被 WAF 拦。
+  const f = mockFetch(async () =>
+    fakeRes({ body: '<!DOCTYPE html><html>...</html>', cookies: ['JSESSIONID=xyz; Path=/'] }),
+  );
+  const cookie = await initCookie({ fetchImpl: f });
+  assert.equal(cookie, 'JSESSIONID=xyz');
+});
+
+test('initCookie：init 被拦（302 → error.html）→ 空 cookie', async () => {
+  const f = mockFetch(async () => fakeRes({ status: 302, location: 'https://kyfw.12306.cn/otn/error.html' }));
+  assert.equal(await initCookie({ fetchImpl: f }), '');
+});
+
+test('initCookie：init 网络失败 → 空 cookie', async () => {
+  const f = mockFetch(async () => ({ error: 'boom' }));
+  assert.equal(await initCookie({ fetchImpl: f }), '');
+});
+
 // ── fetchLeftTicket ──────────────────────────────────────
 test('fetchLeftTicket：先 init 再 query，且带 Cookie', async () => {
   const withText = mockFetch(async (url) =>
