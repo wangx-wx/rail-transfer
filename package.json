@@ -1,0 +1,10 @@
+{
+  "name": "rail-transfer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "12306 中转换乘查询工具 —— 比官方网页给出更多中转方案",
+  "scripts": {
+    "test": "node --test"
+  }
+}
