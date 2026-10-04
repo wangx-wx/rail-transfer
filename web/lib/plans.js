@@ -60,9 +60,12 @@ export function mergePlans(plans) {
   /** @type {Map<string, any>} */
   const groups = new Map();
   for (const p of plans) {
-    const key = `${p.firstTrainNo}|${p.secondTrainNo}`;
+    // 按**显示车次**合并（firstTrainNo 是内部编号，同车接续时会重复）
+    const key = `${p.firstTrainCode}|${p.secondTrainCode}`;
     if (!groups.has(key)) {
       groups.set(key, {
+        firstTrainCode: p.firstTrainCode,
+        secondTrainCode: p.secondTrainCode,
         firstTrainNo: p.firstTrainNo,
         secondTrainNo: p.secondTrainNo,
         middleStations: [],

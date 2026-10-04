@@ -80,6 +80,37 @@ test('parseTransferItem：字段与布尔标记', () => {
   assert.equal(typeof plan.sameTrain, 'boolean');
 });
 
+test('parseTransferItem：显示车次取自 fullList.station_train_code（非内部编号）', () => {
+  const raw = fixture('transfer-10.json');
+  const item = raw.data.middleList[0];
+  const plan = parseTransferItem(item);
+  // first_train_no 是内部编号，形如 76000G873541；显示车次应形如 G8735
+  assert.match(item.first_train_no, /^\d/);
+  assert.match(plan.firstTrainCode, /^[GDCKTZ]\d+$/);
+  assert.equal(plan.firstTrainCode, item.fullList[0].station_train_code);
+});
+
+test('parseTransferItem：same_station "0" → 同站，"1" → 异站', () => {
+  const same = parseTransferItem({ same_station: '0', same_train: 'N' });
+  assert.equal(same.sameStation, true);
+  assert.equal(same.sameTrain, false);
+
+  const cross = parseTransferItem({ same_station: '1', same_train: 'N' });
+  assert.equal(cross.sameStation, false);
+});
+
+test('parseTransferItem：同城异站方案（站名带 -，same_station="1"）', () => {
+  const raw = fixture('transfer-cross-station.json');
+  const item = raw.data.middleList.find((x) => x.middle_station_name.includes('-'));
+  const plan = parseTransferItem(item);
+  assert.equal(plan.sameStation, false);
+  assert.match(plan.middleStation, /-/);
+});
+
+test('parseTransferItem：same_train "Y" → 同车接续', () => {
+  assert.equal(parseTransferItem({ same_train: 'Y', same_station: '0' }).sameTrain, true);
+});
+
 test('parseTransfer：10 条方案 + 候选枢纽', () => {
   const raw = fixture('transfer-10.json');
   const { plans, middleStationList } = parseTransfer(raw);

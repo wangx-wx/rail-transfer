@@ -59,22 +59,35 @@ export function parseLeftTicket(raw) {
 
 /**
  * 解析中转接口的一个方案（middleList 项）。
+ *
+ * ⚠️ `first_train_no` / `second_train_no` 是**内部编号**（如 `76000G873541`），
+ * 不是显示车次。显示车次在 `fullList[i].station_train_code`（如 `G8735`）。
+ * 同车接续时两程的内部编号相同。
+ *
+ * ⚠️ `same_station` 是字符串 `"0"`/`"1"`，**不是** `"Y"`/`"N"`：
+ *   `"0"` = 同站换乘；`"1"` = 同城异站（`middle_station_name` 形如 `北京西-北京南`）。
+ * 实测证据见 test/fixtures/transfer-cross-station.json。
+ * `same_train` 才是 `"Y"`/`"N"`。
+ *
  * @param {any} item
  * @returns {import('../../shared/types.js').TransferPlan}
  */
 export function parseTransferItem(item) {
+  const legs = Array.isArray(item.fullList) ? item.fullList : [];
   return {
     fromStation: item.from_station_name,
     middleStation: item.middle_station_name,
     endStation: item.end_station_name,
     firstTrainNo: item.first_train_no,
     secondTrainNo: item.second_train_no,
+    firstTrainCode: legs[0]?.station_train_code || item.first_train_no,
+    secondTrainCode: legs[1]?.station_train_code || item.second_train_no,
     startTime: item.start_time,
     arriveTime: item.arrive_time,
     waitMinutes: Number(item.wait_time_minutes) || 0,
     totalMinutes: Number(item.all_lishi_minutes) || 0,
-    sameStation: item.same_station === 'Y',
-    sameTrain: item.same_train === 'Y',
+    sameStation: String(item.same_station) === '0',
+    sameTrain: String(item.same_train) === 'Y',
     score: Number(item.score) || 0,
   };
 }

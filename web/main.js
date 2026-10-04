@@ -6,6 +6,7 @@
 
 import { CITY_STATIONS, ALL_CITIES } from './data/stations.js';
 import { PRESALE_DAYS } from '../shared/constants.js';
+import { API_BASE } from './config.js';
 import * as api from './lib/api.js';
 import { runQuery } from './lib/orchestrate.js';
 import { parseLeftTicket, parseTransfer } from './lib/parse.js';
@@ -84,12 +85,15 @@ async function onSubmit(e) {
     await runQuery(
       { from: from.code, to: to.code, date, exclude: [...from.stations, ...to.stations] },
       {
-        leftTicket: (p) => api.leftTicket(p, { token }),
-        transfer: (p) => api.transfer(p, { token }),
+        leftTicket: (p) => api.leftTicket(p, { token, base: API_BASE }),
+        transfer: (p) => api.transfer(p, { token, base: API_BASE }),
       },
       {
         onDirect: (r) => {
-          if (!r.ok) return setStatus(`直达查询失败：${r.error}`, 'err');
+          if (!r.ok) {
+            $('panel-direct').innerHTML = `<div class="empty err">直达查询失败：${r.error}</div>`;
+            return setStatus(`直达查询失败：${r.error}`, 'err');
+          }
           const { trains, stationMap: sm } = parseLeftTicket(r.data);
           stationMap = sm;
           const filtered = filterByPeriod(trains, period);

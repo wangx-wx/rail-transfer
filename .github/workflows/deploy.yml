@@ -1,0 +1,37 @@
+# 部署静态前端到 GitHub Pages（T17）
+#
+# 零构建：本仓库无打包步骤，直接上传源码。入口 index.html 在仓库根，
+# 它引用 ./web/* 与 ./shared/*，二者都是根下真实目录，相对路径天然自洽。
+#
+# 启用：仓库 Settings → Pages → Source 选 "GitHub Actions"。
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

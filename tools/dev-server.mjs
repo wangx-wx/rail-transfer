@@ -33,9 +33,8 @@ const MIME = {
 
 /** 把 URL 路径映射到磁盘文件 */
 function resolveFile(pathname) {
-  if (pathname === '/' || pathname === '') return join(ROOT, 'web/index.html');
-  // /shared/* → 仓库根 shared/；其余 → web/
-  const rel = pathname.startsWith('/shared/') ? pathname.slice(1) : join('web', pathname);
+  // 入口在仓库根；/web/* 与 /shared/* 都是根下的真实目录
+  const rel = pathname === '/' || pathname === '' ? 'index.html' : pathname.slice(1);
   const full = normalize(join(ROOT, rel));
   // 防目录穿越
   if (!full.startsWith(ROOT)) return null;

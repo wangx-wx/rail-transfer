@@ -94,7 +94,7 @@ export function renderTransfers(groups) {
           const mss = g.middleStations.map((m) => `${esc(m.name)}(${m.waitMinutes}分)`).join(' / ');
           return `<div class="card">
             <div class="head">
-              <span class="train">${esc(g.firstTrainNo)} → ${esc(g.secondTrainNo)}</span>
+              <span class="train">${esc(g.firstTrainCode)} → ${esc(g.secondTrainCode)}</span>
               <span class="time">总耗时 ${g.best.totalMinutes} 分</span>
             </div>
             <div class="time">经 ${mss}</div>

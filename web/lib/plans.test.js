@@ -15,6 +15,9 @@ const mk = (over = {}) => ({
   endStation: '上海虹桥',
   firstTrainNo: 'G1',
   secondTrainNo: 'G2',
+  firstTrainCode: 'G1',
+  secondTrainCode: 'G2',
+  secondTrainNo: 'G2',
   startTime: '06:00',
   arriveTime: '12:00',
   waitMinutes: 30,
@@ -59,13 +62,13 @@ test('annotatePlans：不删除任何方案（D12）', () => {
 test('mergePlans：同一车次组合合并为一行，换乘站收进数组', () => {
   const merged = mergePlans(
     annotatePlans([
-      mk({ firstTrainNo: 'A', secondTrainNo: 'B', middleStation: '南京南', totalMinutes: 400 }),
-      mk({ firstTrainNo: 'A', secondTrainNo: 'B', middleStation: '杭州东', totalMinutes: 380 }),
-      mk({ firstTrainNo: 'C', secondTrainNo: 'D', middleStation: '武汉', totalMinutes: 420 }),
+      mk({ firstTrainCode: 'A', secondTrainCode: 'B', middleStation: '南京南', totalMinutes: 400 }),
+      mk({ firstTrainCode: 'A', secondTrainCode: 'B', middleStation: '杭州东', totalMinutes: 380 }),
+      mk({ firstTrainCode: 'C', secondTrainCode: 'D', middleStation: '武汉', totalMinutes: 420 }),
     ]),
   );
   assert.equal(merged.length, 2);
-  const ab = merged.find((g) => g.firstTrainNo === 'A');
+  const ab = merged.find((g) => g.firstTrainCode === 'A');
   assert.equal(ab.count, 2);
   assert.deepEqual(ab.middleStations.map((m) => m.name), ['南京南', '杭州东']);
   assert.equal(ab.best.totalMinutes, 380); // 代表项取最快
@@ -74,8 +77,8 @@ test('mergePlans：同一车次组合合并为一行，换乘站收进数组', (
 test('mergePlans：重复换乘站不重复计入', () => {
   const merged = mergePlans(
     annotatePlans([
-      mk({ firstTrainNo: 'A', secondTrainNo: 'B', middleStation: '南京南' }),
-      mk({ firstTrainNo: 'A', secondTrainNo: 'B', middleStation: '南京南' }),
+      mk({ firstTrainCode: 'A', secondTrainCode: 'B', middleStation: '南京南' }),
+      mk({ firstTrainCode: 'A', secondTrainCode: 'B', middleStation: '南京南' }),
     ]),
   );
   assert.equal(merged[0].count, 2);
@@ -84,19 +87,19 @@ test('mergePlans：重复换乘站不重复计入', () => {
 
 // ── sortPlans（D17）──────────────────────────────────────
 test('sortPlans：默认按总耗时升序', () => {
-  const g = processPlans([mk({ totalMinutes: 500, firstTrainNo: 'X' }), mk({ totalMinutes: 300, firstTrainNo: 'Y' })]);
-  assert.deepEqual(g.map((x) => x.firstTrainNo), ['Y', 'X']);
+  const g = processPlans([mk({ totalMinutes: 500, firstTrainCode: 'X' }), mk({ totalMinutes: 300, firstTrainCode: 'Y' })]);
+  assert.deepEqual(g.map((x) => x.firstTrainCode), ['Y', 'X']);
 });
 
 test('sortPlans：可按换乘等待排序', () => {
   const g = sortPlans(
-    mergePlans(annotatePlans([mk({ waitMinutes: 90, firstTrainNo: 'X' }), mk({ waitMinutes: 20, firstTrainNo: 'Y' })])),
+    mergePlans(annotatePlans([mk({ waitMinutes: 90, firstTrainCode: 'X' }), mk({ waitMinutes: 20, firstTrainCode: 'Y' })])),
     'wait',
   );
-  assert.deepEqual(g.map((x) => x.firstTrainNo), ['Y', 'X']);
+  assert.deepEqual(g.map((x) => x.firstTrainCode), ['Y', 'X']);
 });
 
 test('sortPlans：未知排序键回退到总耗时', () => {
-  const g = sortPlans(mergePlans(annotatePlans([mk({ totalMinutes: 9, firstTrainNo: 'X' })])), 'nope');
+  const g = sortPlans(mergePlans(annotatePlans([mk({ totalMinutes: 9, firstTrainCode: 'X' })])), 'nope');
   assert.equal(g.length, 1);
 });
