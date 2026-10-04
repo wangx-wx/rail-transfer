@@ -1,0 +1,112 @@
+/**
+ * 中转方案处理 —— 标记 / 合并 / 排序（纯函数）
+ *
+ * 对应决策：
+ *   D12 标记优于删除 —— 不删除任何方案，只加标记
+ *   D13 换乘下限：同站 15 分 / 同城异站 60 分
+ *   D14 超长等待 > 120 分：标记，默认折叠
+ *   D15 同车接续：单独标注
+ *   D16 视觉合并同一车次组合
+ *   D17 默认按总耗时排序；等待 < 20 分打风险标记
+ */
+
+import {
+  MIN_WAIT_SAME_STATION,
+  MIN_WAIT_CROSS_STATION,
+  LONG_WAIT_THRESHOLD,
+  RISK_WAIT_THRESHOLD,
+} from '../../shared/constants.js';
+
+/**
+ * 给方案打标记（D12：只标记，不删除）。
+ * @param {import('../../shared/types.js').TransferPlan} plan
+ * @returns {import('../../shared/types.js').TransferPlan & {flags: PlanFlags}}
+ */
+export function annotatePlan(plan) {
+  const minWait = plan.sameStation ? MIN_WAIT_SAME_STATION : MIN_WAIT_CROSS_STATION;
+  return {
+    ...plan,
+    flags: {
+      /** 低于换乘下限（物理上不可行） */
+      belowMin: plan.waitMinutes < minWait,
+      /** 换乘时间紧，有赶不上的风险 */
+      risky: plan.waitMinutes >= minWait && plan.waitMinutes < RISK_WAIT_THRESHOLD,
+      /** 超长等待，默认折叠 */
+      longWait: plan.waitMinutes > LONG_WAIT_THRESHOLD,
+      /** 同车接续，无需换乘站台 */
+      sameTrain: plan.sameTrain,
+    },
+  };
+}
+
+/**
+ * 批量打标记。
+ * @param {import('../../shared/types.js').TransferPlan[]} plans
+ */
+export function annotatePlans(plans) {
+  return plans.map(annotatePlan);
+}
+
+/**
+ * 视觉合并同一车次组合（D16）。
+ *
+ * 同一对 `firstTrainNo → secondTrainNo` 只占一行，换乘站收进 `middleStations`，
+ * 代表项取总耗时最小的那条。**不丢信息**：所有换乘站都保留。
+ *
+ * @param {ReturnType<typeof annotatePlan>[]} plans
+ * @returns {Array<{firstTrainNo:string, secondTrainNo:string, middleStations:Array<{name:string, waitMinutes:number, sameStation:boolean}>, best:any, count:number}>}
+ */
+export function mergePlans(plans) {
+  /** @type {Map<string, any>} */
+  const groups = new Map();
+  for (const p of plans) {
+    const key = `${p.firstTrainNo}|${p.secondTrainNo}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        firstTrainNo: p.firstTrainNo,
+        secondTrainNo: p.secondTrainNo,
+        middleStations: [],
+        best: p,
+        count: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.count++;
+    if (!g.middleStations.some((m) => m.name === p.middleStation)) {
+      g.middleStations.push({
+        name: p.middleStation,
+        waitMinutes: p.waitMinutes,
+        sameStation: p.sameStation,
+      });
+    }
+    if (p.totalMinutes < g.best.totalMinutes) g.best = p;
+  }
+  return [...groups.values()];
+}
+
+/** 排序键（D17） */
+const SORTERS = {
+  /** 默认：总耗时升序 */
+  duration: (a, b) => a.best.totalMinutes - b.best.totalMinutes,
+  /** 换乘等待升序 */
+  wait: (a, b) => a.best.waitMinutes - b.best.waitMinutes,
+};
+
+/**
+ * 排序（D17）。默认总耗时；价格排序待票价接入后再补。
+ * @param {ReturnType<typeof mergePlans>} groups
+ * @param {'duration'|'wait'} by
+ */
+export function sortPlans(groups, by = 'duration') {
+  const cmp = SORTERS[by] || SORTERS.duration;
+  return [...groups].sort(cmp);
+}
+
+/**
+ * 一站式：标记 → 合并 → 排序。
+ * @param {import('../../shared/types.js').TransferPlan[]} plans
+ * @param {'duration'|'wait'} by
+ */
+export function processPlans(plans, by = 'duration') {
+  return sortPlans(mergePlans(annotatePlans(plans)), by);
+}

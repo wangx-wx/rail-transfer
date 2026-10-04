@@ -162,4 +162,45 @@ export async function fetchTransferBatch({ from, to, date, hubs, fetchImpl = glo
   return out;
 }
 
+/**
+ * 查询经停站序列（买短乘长 D24 用；产品方案 5.7）。
+ * @param {{trainNo:string, fromStationNo:string, toStationNo:string, date:string, fetchImpl?:Function}} opts
+ */
+export async function fetchStopover({ trainNo, fromStationNo, toStationNo, date, fetchImpl = globalThis.fetch }) {
+  const { res, text } = await request(
+    '/otn/czxx/queryByTrainNo',
+    {
+      train_no: trainNo,
+      from_station_telecode: fromStationNo,
+      to_station_telecode: toStationNo,
+      depart_date: date,
+    },
+    { fetchImpl },
+  );
+  const c = classify(res, text);
+  if (!c.ok) return { ok: false, error: c.error };
+  return { ok: true, data: JSON.parse(text) };
+}
+
+/**
+ * 查询票价（D20/D21：直达展示参考价，中转只查第一条）。
+ * @param {{trainNo:string, fromStationNo:string, toStationNo:string, seatTypes:string, date:string, fetchImpl?:Function}} opts
+ */
+export async function fetchPrice({ trainNo, fromStationNo, toStationNo, seatTypes, date, fetchImpl = globalThis.fetch }) {
+  const { res, text } = await request(
+    '/otn/leftTicket/queryTicketPrice',
+    {
+      train_no: trainNo,
+      from_station_no: fromStationNo,
+      to_station_no: toStationNo,
+      seat_types: seatTypes,
+      train_date: date,
+    },
+    { fetchImpl },
+  );
+  const c = classify(res, text);
+  if (!c.ok) return { ok: false, error: c.error };
+  return { ok: true, data: JSON.parse(text) };
+}
+
 export { COL };
