@@ -9,7 +9,6 @@
  * 用法（部署后）：
  *   /                  基础探测（4 次子请求）
  *   /?full=1           完整枚举（34 次子请求，测上限压力）
- *   /?burst=N          连续发 N 次同一请求（测 isolate 复用行为，默认 1）
  *   /?date=2026-10-08  指定日期（默认 = 北京时间 +3 天）
  *
  * 注意：日期必须落在 [今天, 今天+14] 内，越界会返回 302 → error.html
@@ -76,7 +75,6 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     const full = url.searchParams.get('full') === '1';
-    const burst = Math.max(1, Math.min(20, parseInt(url.searchParams.get('burst') || '1', 10) || 1));
     const date = url.searchParams.get('date') || defaultDate();
 
     // 每次 invocation 独立的计数器（见 makeCounter 注释）
@@ -87,7 +85,6 @@ export default {
       _说明: 'subrequests 为【本次 invocation】的子请求数；Free 版上限 50/次',
       date,
       full,
-      burst,
       steps: [],
     };
     const log = (name, obj) => out.steps.push({ 步骤: name, ...obj });
@@ -154,26 +151,6 @@ export default {
         组合数: froms.length * hubs.length,
         明细: detail,
         说明: '2 个出发站 × 15 枢纽 = 30 次；实际产品若按 2~4 站展开会更多',
-      });
-    }
-
-    // ── 5. 对照实验：连续 N 次，验证「子请求配额是否按 invocation 独立计算」──
-    // 若 N=3 时每轮都是 4 次（而非累积 4/8/12），说明配额按次独立 → 扇出转发可行。
-    if (burst > 1) {
-      const rounds = [];
-      for (let i = 0; i < burst; i++) {
-        const c = makeCounter();
-        await c.probe(`${KYFW}/otn/leftTicket/init`);
-        await c.probe(`${KYFW}/lcquery/queryG?train_date=${date}&from_station_telecode=LZJ` +
-          `&to_station_telecode=HZH&middle_station=&result_index=0&can_query=Y&isShowWZ=N` +
-          `&purpose_codes=00&channel=E`, { Referer: `${KYFW}/otn/lcQuery/init` });
-        rounds.push(c.count);
-      }
-      log('5_配额对照', {
-        轮次计数: rounds,
-        判定: new Set(rounds).size === 1
-          ? `每轮均为 ${rounds[0]} 次，配额按 invocation 独立 → 扇出转发可行`
-          : `计数累积（${rounds.join('→')}）→ 配额不独立，扇出方案不成立`,
       });
     }
 
