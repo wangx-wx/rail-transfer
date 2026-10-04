@@ -6,24 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { esc, toMinutes, filterByPeriod, seatTag, renderTrains, renderTransfers } from './render.js';
+import { esc, seatTag, renderTrains, renderTransfers } from './render.js';
 import { annotatePlans, mergePlans } from './plans.js';
 
 test('esc：转义 HTML 特殊字符', () => {
   assert.equal(esc('<a href="x">&'), '&lt;a href=&quot;x&quot;&gt;&amp;');
-});
-
-test('toMinutes：解析 HH:MM', () => {
-  assert.equal(toMinutes('06:08'), 368);
-  assert.equal(toMinutes('23:59'), 1439);
-  assert.equal(toMinutes('bad'), -1);
-});
-
-test('filterByPeriod：按时段过滤', () => {
-  const trains = [{ startTime: '05:00' }, { startTime: '09:00' }, { startTime: '20:00' }];
-  assert.deepEqual(filterByPeriod(trains, 'morning').map((t) => t.startTime), ['09:00']);
-  assert.deepEqual(filterByPeriod(trains, 'evening').map((t) => t.startTime), ['20:00']);
-  assert.equal(filterByPeriod(trains, '').length, 3);
 });
 
 // ── seatTag ──────────────────────────────────────────────

@@ -1,40 +1,13 @@
 /**
  * 渲染层 —— 纯函数生成 HTML 字符串（便于测试）
  *
- * 界面决策：D26 单页表单 / D27 直达-中转标签页 / D28 按枢纽分组折叠 / D9 展示票-席别-价格
+ * 界面决策：D26 单页表单 / D28 按枢纽分组折叠 / D9 展示票-席别-价格
  * 车站展示：区分「始发/终到」与「上车/下车」（见 spec/技术方案.md §5.1）
  */
 
 /** 转义 HTML，防止站名等字段注入 */
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-/** 把 'HH:MM' 转成当天分钟数，用于时段过滤 */
-export function toMinutes(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
-}
-
-/** 时段过滤（D26） */
-export const PERIODS = {
-  morning: [6 * 60, 12 * 60],
-  afternoon: [12 * 60, 18 * 60],
-  evening: [18 * 60, 24 * 60],
-};
-
-/**
- * 按出发时段过滤车次。
- * @param {any[]} trains
- * @param {string} period
- */
-export function filterByPeriod(trains, period) {
-  const range = PERIODS[period];
-  if (!range) return trains;
-  return trains.filter((t) => {
-    const m = toMinutes(t.startTime);
-    return m >= range[0] && m < range[1];
-  });
 }
 
 /**

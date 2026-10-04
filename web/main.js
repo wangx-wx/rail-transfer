@@ -2,6 +2,7 @@
  * 前端入口 —— 串联表单、编排、渲染
  *
  * 查询流程（用户选定）：**直达与中转分开查**，各查各的，互不干扰。
+ * 结果共用一个面板：点「查直达」显示直达，点「查中转」显示中转。
  * 零构建、原生 ESM：浏览器直接加载本文件。
  */
 
@@ -12,7 +13,7 @@ import * as api from './lib/api.js';
 import { runQuery } from './lib/orchestrate.js';
 import { parseLeftTicket, parseTransfer } from './lib/parse.js';
 import { processPlans } from './lib/plans.js';
-import { renderTrains, renderTransfers, filterByPeriod } from './lib/render.js';
+import { renderTrains, renderTransfers } from './lib/render.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,10 +51,7 @@ function checkDate(date) {
 function readForm() {
   const date = $('date').value;
   const err = checkDate(date);
-  if (err) {
-    setStatus(err, 'err');
-    return null;
-  }
+  if (err) return setStatusErr(err);
   const from = resolveCity($('from').value);
   const to = resolveCity($('to').value);
   if (!from) return setStatusErr(`未识别的城市：${$('from').value}`);
@@ -63,7 +61,6 @@ function readForm() {
     to,
     date,
     seat: $('seat').value,
-    period: $('period').value,
     token: $('token').value.trim(),
   };
 }
@@ -71,6 +68,10 @@ function readForm() {
 function setStatusErr(msg) {
   setStatus(msg, 'err');
   return null;
+}
+
+function setPanel(html) {
+  $('panel').innerHTML = html;
 }
 
 let running = false;
@@ -83,24 +84,22 @@ async function onDirect() {
 
   running = true;
   $('btn-direct').disabled = true;
-  $('panel-direct').innerHTML = '<div class="empty">查询中…</div>';
-  showTab('direct');
+  setPanel('<div class="empty">查询中…</div>');
   setStatus('正在查询直达…');
 
   try {
     const r = await api.leftTicket({ from: ctx.from.code, to: ctx.to.code, date: ctx.date }, { token: ctx.token, base: API_BASE });
     if (!r.ok) {
-      $('panel-direct').innerHTML = `<div class="empty err">直达查询失败：${r.error}</div>`;
+      setPanel(`<div class="empty err">直达查询失败：${r.error}</div>`);
       return setStatus(`直达查询失败：${r.error}`, 'err');
     }
     const { trains, stationMap } = parseLeftTicket(r.data);
     // 合并全量站名表（直达响应自带的 map 只覆盖少数站）
     const merged = { ...STATION_NAMES, ...stationMap };
-    const filtered = filterByPeriod(trains, ctx.period);
-    $('panel-direct').innerHTML = renderTrains(filtered, merged, ctx.seat);
-    setStatus(`直达 ${filtered.length} 趟${filtered.length !== trains.length ? `（共 ${trains.length}，已按时段筛选）` : ''}`);
+    setPanel(renderTrains(trains, merged, ctx.seat));
+    setStatus(`直达 ${trains.length} 趟`);
   } catch (e) {
-    $('panel-direct').innerHTML = `<div class="empty err">查询出错：${e}</div>`;
+    setPanel(`<div class="empty err">查询出错：${e}</div>`);
     setStatus(`查询出错：${e}`, 'err');
   } finally {
     running = false;
@@ -116,14 +115,11 @@ async function onTransfer() {
 
   running = true;
   $('btn-transfer').disabled = true;
-  $('panel-transfer').innerHTML = '<div class="empty">查询中…</div>';
-  showTab('transfer');
+  setPanel('<div class="empty">查询中…</div>');
   setStatus('正在查询官方基线…');
 
   const allPlans = [];
-  const renderPanel = () => {
-    $('panel-transfer').innerHTML = renderTransfers(processPlans(allPlans));
-  };
+  const renderPanel = () => setPanel(renderTransfers(processPlans(allPlans)));
 
   try {
     await runQuery(
@@ -170,23 +166,7 @@ function setStatus(text, cls = '') {
   el.textContent = text;
 }
 
-/** 切换标签页（D27） */
-function showTab(name) {
-  for (const b of document.querySelectorAll('.tabs button')) {
-    b.setAttribute('aria-selected', String(b.dataset.tab === name));
-  }
-  $('panel-direct').classList.toggle('active', name === 'direct');
-  $('panel-transfer').classList.toggle('active', name === 'transfer');
-}
-
-function initTabs() {
-  for (const btn of document.querySelectorAll('.tabs button')) {
-    btn.addEventListener('click', () => showTab(btn.dataset.tab));
-  }
-}
-
 fillCities();
 $('date').value = defaultDate();
 $('btn-direct').addEventListener('click', onDirect);
 $('btn-transfer').addEventListener('click', onTransfer);
-initTabs();

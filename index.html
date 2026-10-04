@@ -171,14 +171,6 @@
           <option value="WZ">无座</option>
         </select>
       </label>
-      <label>出发时段
-        <select id="period">
-          <option value="">全部</option>
-          <option value="morning">上午 06-12</option>
-          <option value="afternoon">下午 12-18</option>
-          <option value="evening">晚上 18-24</option>
-        </select>
-      </label>
       <label>口令<input id="token" placeholder="可选" autocomplete="off" /></label>
       <button class="btn btn-primary" id="btn-direct" type="button">查直达</button>
       <button class="btn btn-ghost" id="btn-transfer" type="button">查中转</button>
@@ -187,12 +179,7 @@
 
     <main>
       <div class="status" id="status"></div>
-      <div class="tabs" role="tablist">
-        <button role="tab" aria-selected="true" data-tab="direct">直达</button>
-        <button role="tab" aria-selected="false" data-tab="transfer">中转</button>
-      </div>
-      <section class="group active" id="panel-direct"><div class="empty">输入城市与日期后点「查直达」</div></section>
-      <section class="group" id="panel-transfer"><div class="empty">点「查中转」开始枚举枢纽</div></section>
+      <section id="panel"><div class="empty">输入城市与日期后，点「查直达」或「查中转」</div></section>
     </main>
 
     <script type="module" src="./web/main.js"></script>
