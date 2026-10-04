@@ -42,6 +42,43 @@ export const MAX_SUBREQUESTS = 50;
 /** 可查询的最大天数（今天 ~ 今天+14） */
 export const PRESALE_DAYS = 14;
 
+// ── 枢纽兜底清单（D10：官方种子 + 内置兜底）──────────────
+/**
+ * 全国主要换乘枢纽。官方 `middleStationList` 在弱线路上只给 1 个候选（5.9），
+ * 用此清单兜底，保证枚举广度。
+ */
+export const FALLBACK_HUBS = [
+  'VNP', // 北京南
+  'BXP', // 北京西
+  'TJP', // 天津
+  'JGK', // 济南西
+  'UUH', // 徐州东
+  'NKH', // 南京南
+  'AOH', // 上海虹桥
+  'HGH', // 杭州东
+  'ENH', // 合肥南
+  'WHN', // 武汉
+  'ZAF', // 郑州东
+  'SJP', // 石家庄
+  'CWQ', // 长沙南
+  'EAY', // 西安北
+  'ICW', // 成都东
+  'CUW', // 重庆北
+  'IZQ', // 广州南
+  'IOQ', // 深圳北
+  'NXG', // 南昌西
+  'FZS', // 福州
+];
+
+// ── 席别（D9 / D26）──────────────────────────────────────
+/** 界面可选席别（对应 SEAT_COLUMNS 的 code） */
+export const SEAT_OPTIONS = [
+  { code: 'ZE', name: '二等座' },
+  { code: 'ZY', name: '一等座' },
+  { code: 'SWZ', name: '商务座' },
+  { code: 'WZ', name: '无座' },
+];
+
 // ── leftTicket 响应列位映射 ──────────────────────────────
 /**
  * leftTicket/queryG 的 `result[]` 是 58 列 `|` 分隔字符串。
