@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 开工时从零建工程，不要被现有目录结构约束。
 
-**产品范围以 `spec/产品方案.md` 为准**（决策清单带 ID 与状态，可追加可推翻）。后续技术方案也归档到 `spec/`。
+**产品范围以 `spec/产品方案.md` 为准**，技术实现以 `spec/技术方案.md` 为准（决策清单均带 ID 与状态，可追加可推翻）。两份文档同构：产品方案的决策用 `D-` 前缀，技术方案用 `T` 前缀。
 
 `docs/`、`spike/` 是前序设计与调研资料（`docs/` 被 .gitignore 忽略，仅存本地），部分结论已过时——见 `spec/产品方案.md` 第六节。
 
