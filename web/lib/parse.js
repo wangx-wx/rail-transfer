@@ -27,8 +27,14 @@ export function parseTrainRow(row) {
   return {
     trainNo: f[COL.trainNo],
     trainCode: f[COL.trainCode],
+    /** 上车站码 */
     fromStation: f[COL.fromStationCode],
+    /** 下车站码 */
     toStation: f[COL.toStationCode],
+    /** 始发站码（可能 ≠ 上车站） */
+    startStation: f[COL.startStationCode],
+    /** 终到站码（可能 ≠ 下车站） */
+    endStation: f[COL.endStationCode],
     startTime: f[COL.startTime],
     arriveTime: f[COL.arriveTime],
     duration: f[COL.duration],
@@ -72,6 +78,34 @@ export function parseLeftTicket(raw) {
  * @param {any} item
  * @returns {import('../../shared/types.js').TransferPlan}
  */
+/**
+ * 解析一程（fullList 项）的展示信息。
+ * @param {any} leg
+ */
+export function parseTransferLeg(leg) {
+  return {
+    trainCode: leg.station_train_code,
+    trainNo: leg.train_no,
+    /** 始发站名（可能 ≠ 上车站） */
+    startStation: leg.start_station_name,
+    /** 终到站名（可能 ≠ 下车站） */
+    endStation: leg.end_station_name,
+    /** 上车站名 */
+    fromStation: leg.from_station_name,
+    /** 下车站名 */
+    toStation: leg.to_station_name,
+    startTime: leg.start_time,
+    arriveTime: leg.arrive_time,
+    duration: leg.lishi,
+    seats: {
+      ZE: leg.ze_num,
+      ZY: leg.zy_num,
+      SWZ: leg.swz_num,
+      WZ: leg.wz_num,
+    },
+  };
+}
+
 export function parseTransferItem(item) {
   const legs = Array.isArray(item.fullList) ? item.fullList : [];
   return {
@@ -82,6 +116,8 @@ export function parseTransferItem(item) {
     secondTrainNo: item.second_train_no,
     firstTrainCode: legs[0]?.station_train_code || item.first_train_no,
     secondTrainCode: legs[1]?.station_train_code || item.second_train_no,
+    /** 每程详情（始发/终到/上下车/时刻/余票） */
+    legs: legs.map(parseTransferLeg),
     startTime: item.start_time,
     arriveTime: item.arrive_time,
     waitMinutes: Number(item.wait_time_minutes) || 0,

@@ -101,6 +101,16 @@ for (const [city, stations] of byCity) {
   ALL_CITIES[city] = (same || stations[0]).code;
 }
 
+// ── 站码 → 站名（全量 3404 站）────────────────────────────
+// 直达响应的 data.map 只含查询相关的少数站，始发/终到站常缺失，
+// 故需全量映射表把站码翻成站名。
+/** @type {Record<string,string>} */
+const STATION_NAMES = {};
+for (const r of rows) {
+  const [, name, code] = r;
+  if (code && name) STATION_NAMES[code] = name;
+}
+
 const header = `/**
  * 城市 → 站点表（自动生成，勿手改）
  *
@@ -110,6 +120,7 @@ const header = `/**
  *
  * CITY_STATIONS：${Object.keys(CITY_STATIONS).length} 个主要城市，含 Top-N 主站（D18）
  * ALL_CITIES：全部 ${Object.keys(ALL_CITIES).length} 个城市 → 代表站码（兜底，保证任意城市可查）
+ * STATION_NAMES：全部 ${Object.keys(STATION_NAMES).length} 个站码 → 站名（用于展示始发/终到站）
  *
  * ⚠️ 主站随 OD 变化，本表只是枢纽枚举的候选起点（见 spec/技术方案.md §6.1）。
  */
@@ -118,7 +129,8 @@ const header = `/**
 
 const body =
   `export const CITY_STATIONS = ${JSON.stringify(CITY_STATIONS, null, 2)};\n\n` +
-  `export const ALL_CITIES = ${JSON.stringify(ALL_CITIES, null, 0)};\n`;
+  `export const ALL_CITIES = ${JSON.stringify(ALL_CITIES, null, 0)};\n\n` +
+  `export const STATION_NAMES = ${JSON.stringify(STATION_NAMES, null, 0)};\n`;
 
 const outPath = fileURLToPath(new URL('../web/data/stations.js', import.meta.url));
 writeFileSync(outPath, header + body);

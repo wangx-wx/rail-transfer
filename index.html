@@ -5,43 +5,153 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>12306 中转换乘查询</title>
     <style>
-      :root { --bd: #dcdfe6; --pri: #2b6cb0; --muted: #718096; --warn: #c05621; --danger: #c53030; }
+      :root {
+        --pri: #2563eb; --pri-d: #1d4ed8; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+        --tx: #1e293b; --mu: #64748b; --bd: #e2e8f0; --bg: #f1f5f9; --card: #fff;
+      }
       * { box-sizing: border-box; }
-      body { margin: 0; font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #1a202c; }
-      header { padding: 16px 20px; border-bottom: 1px solid var(--bd); }
-      h1 { margin: 0; font-size: 18px; }
-      h1 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
-      form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 16px 20px; border-bottom: 1px solid var(--bd); }
-      label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-      input, select, button { padding: 7px 10px; border: 1px solid var(--bd); border-radius: 6px; font: inherit; }
-      input { width: 130px; }
-      input[type="date"] { width: 160px; }
-      button { cursor: pointer; background: var(--pri); color: #fff; border-color: var(--pri); }
-      button:disabled { opacity: .5; cursor: not-allowed; }
-      main { padding: 16px 20px; }
-      .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--bd); margin-bottom: 12px; }
-      .tabs button { background: none; color: var(--muted); border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; }
-      .tabs button[aria-selected="true"] { color: var(--pri); border-bottom-color: var(--pri); }
-      .status { color: var(--muted); font-size: 12px; margin: 8px 0; min-height: 1.4em; }
-      .err { color: var(--danger); }
-      .warn { color: var(--warn); }
-      .card { border: 1px solid var(--bd); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-      .card .head { display: flex; justify-content: space-between; gap: 12px; }
-      .card .train { font-weight: 600; }
-      .card .time { color: var(--muted); }
-      .card .seats { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
-      .tag { border: 1px solid var(--bd); border-radius: 4px; padding: 1px 6px; font-size: 11px; color: var(--muted); }
-      .tag.on { color: #2f855a; border-color: #9ae6b4; }
-      .tag.off { color: #a0aec0; }
-      .flag { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
-      .flag.risky { background: #feebc8; color: var(--warn); }
-      .flag.long { background: #e2e8f0; color: var(--muted); }
-      .flag.bad { background: #fed7d7; color: var(--danger); }
-      .hub-group { margin-bottom: 10px; }
-      .hub-group > summary { cursor: pointer; font-weight: 600; }
-      .empty { color: var(--muted); padding: 20px 0; }
+      body {
+        margin: 0; background: var(--bg); color: var(--tx);
+        font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+      header {
+        background: linear-gradient(135deg, #1e3a8a, #2563eb);
+        color: #fff; padding: 18px 24px; box-shadow: 0 2px 8px rgba(30, 58, 138, .25);
+      }
+      header h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: .3px; }
+      header h1 small { font-weight: 400; font-size: 12px; opacity: .8; margin-left: 10px; }
+
+      form {
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+        padding: 16px 24px; background: var(--card); border-bottom: 1px solid var(--bd);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .04); position: sticky; top: 0; z-index: 10;
+      }
+      label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--mu); font-weight: 500; }
+      input, select {
+        padding: 8px 11px; border: 1px solid var(--bd); border-radius: 8px;
+        font: inherit; color: var(--tx); background: #fff; transition: border-color .15s, box-shadow .15s;
+      }
+      input:focus, select:focus { outline: none; border-color: var(--pri); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+      input { width: 128px; }
+      input[type="date"] { width: 158px; }
+      .btn {
+        padding: 9px 20px; border: none; border-radius: 8px; font: inherit; font-weight: 600;
+        cursor: pointer; transition: background .15s, transform .05s;
+      }
+      .btn:active { transform: translateY(1px); }
+      .btn:disabled { opacity: .5; cursor: not-allowed; }
+      .btn-primary { background: var(--pri); color: #fff; }
+      .btn-primary:hover:not(:disabled) { background: var(--pri-d); }
+      .btn-ghost { background: #fff; color: var(--pri); border: 1.5px solid var(--pri); }
+      .btn-ghost:hover:not(:disabled) { background: #eff6ff; }
+
+      main { max-width: 980px; margin: 0 auto; padding: 18px 24px 60px; }
+
+      .status {
+        font-size: 13px; color: var(--mu); margin-bottom: 12px; min-height: 20px;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .status.err { color: var(--bad); }
+      .status.warn { color: var(--warn); }
+      .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .6; }
+      .status:empty::before { display: none; }
+
+      .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+      .tabs button {
+        background: transparent; color: var(--mu); border: none; border-radius: 8px;
+        padding: 8px 18px; font: inherit; font-weight: 600; cursor: pointer; transition: all .15s;
+      }
+      .tabs button[aria-selected="true"] { color: #fff; background: var(--pri); }
+      .tabs button:not([aria-selected="true"]):hover { background: #e2e8f0; }
+
+      .empty { color: var(--mu); text-align: center; padding: 48px 20px; font-size: 14px; }
+      .empty.err { color: var(--bad); }
       .group { display: none; }
       .group.active { display: block; }
+
+      /* ── 直达卡片 ── */
+      .train-card {
+        background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
+        padding: 14px 18px; margin-bottom: 10px; display: grid;
+        grid-template-columns: 68px 1fr; grid-template-rows: auto auto; gap: 4px 14px;
+        transition: box-shadow .15s, border-color .15s;
+      }
+      .train-card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, .07); border-color: #cbd5e1; }
+      .train-code { font-size: 17px; font-weight: 700; color: var(--pri); grid-row: span 2; align-self: center; }
+      .train-code.sm { font-size: 14px; grid-row: auto; }
+      .route { display: flex; align-items: center; gap: 10px; }
+      .ts { text-align: center; min-width: 52px; }
+      .ts .t { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .ts .s { font-size: 12px; color: var(--mu); white-space: nowrap; }
+      .ts.dep .t { color: var(--tx); }
+      .ts.arr .t { color: var(--tx); }
+      .arrow { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 60px; }
+      .arrow .line { width: 100%; height: 1.5px; background: linear-gradient(90deg, var(--bd), #94a3b8, var(--bd)); position: relative; }
+      .arrow .line::after { content: '›'; position: absolute; right: -2px; top: -12px; color: #94a3b8; font-size: 16px; }
+      .arrow .dur { font-size: 11px; color: var(--mu); }
+      .train-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .via { font-size: 11px; color: var(--mu); background: #f1f5f9; padding: 1px 8px; border-radius: 4px; }
+      .seats { display: flex; flex-wrap: wrap; gap: 6px; }
+      .seat { font-size: 11px; padding: 2px 8px; border-radius: 5px; border: 1px solid transparent; }
+      .seat.on { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+      .seat.on.hl { background: #16a34a; color: #fff; border-color: #16a34a; font-weight: 600; }
+      .seat.off { background: #f1f5f9; color: #94a3b8; }
+
+      /* ── 中转卡片 ── */
+      .hub-group { margin-bottom: 14px; }
+      .hub-group > summary {
+        cursor: pointer; font-weight: 600; font-size: 15px; padding: 10px 14px;
+        background: var(--card); border: 1px solid var(--bd); border-radius: 10px;
+        list-style: none; display: flex; align-items: center; gap: 8px;
+      }
+      .hub-group > summary::-webkit-details-marker { display: none; }
+      .hub-group > summary::before { content: '▸'; color: var(--mu); transition: transform .15s; }
+      .hub-group[open] > summary::before { transform: rotate(90deg); }
+      .hub-group[open] > summary { border-radius: 10px 10px 0 0; border-bottom-color: transparent; }
+      .hub-group .count { font-size: 12px; font-weight: 400; color: var(--mu); margin-left: auto; }
+
+      .transfer-card {
+        background: var(--card); border: 1px solid var(--bd); border-top: none;
+        padding: 14px 18px; transition: background .15s;
+      }
+      .transfer-card:last-child { border-radius: 0 0 10px 10px; }
+      .transfer-card:hover { background: #fafbfc; }
+      .transfer-head {
+        display: flex; justify-content: space-between; align-items: baseline;
+        padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px dashed var(--bd);
+      }
+      .transfer-head .od { font-weight: 600; font-size: 14px; }
+      .transfer-head .total { font-size: 13px; color: var(--pri); font-weight: 600; }
+
+      .leg { display: flex; gap: 10px; padding: 4px 0; }
+      .leg-no {
+        flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--pri);
+        color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+        margin-top: 6px;
+      }
+      .leg-body { flex: 1; min-width: 0; }
+      .leg-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+      .leg .route { gap: 8px; }
+      .leg .ts .t { font-size: 15px; }
+
+      .wait {
+        margin: 6px 0 6px 30px; padding: 6px 12px; border-radius: 8px;
+        background: #f8fafc; font-size: 12px; color: var(--mu); display: flex; align-items: center; gap: 8px;
+        border-left: 3px solid var(--bd);
+      }
+      .wait.warn { background: #fffbeb; border-left-color: var(--warn); color: #92400e; }
+      .wait.dim { background: #f1f5f9; border-left-color: #cbd5e1; }
+      .wait b { color: var(--tx); }
+      .wait-icon { font-size: 13px; opacity: .5; }
+
+      .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #e2e8f0; color: var(--mu); }
+      .tag.ok { background: #dcfce7; color: #15803d; }
+      .flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .flag { font-size: 11px; padding: 2px 9px; border-radius: 5px; font-weight: 500; }
+      .flag.bad { background: #fee2e2; color: var(--bad); }
+      .flag.risky { background: #fef3c7; color: var(--warn); }
+      .flag.long { background: #f1f5f9; color: var(--mu); }
+      .flag.ok { background: #dcfce7; color: #15803d; }
     </style>
   </head>
   <body>
@@ -70,7 +180,8 @@
         </select>
       </label>
       <label>口令<input id="token" placeholder="可选" autocomplete="off" /></label>
-      <button id="submit" type="submit">查询</button>
+      <button class="btn btn-primary" id="btn-direct" type="button">查直达</button>
+      <button class="btn btn-ghost" id="btn-transfer" type="button">查中转</button>
     </form>
     <datalist id="cities"></datalist>
 
@@ -80,8 +191,8 @@
         <button role="tab" aria-selected="true" data-tab="direct">直达</button>
         <button role="tab" aria-selected="false" data-tab="transfer">中转</button>
       </div>
-      <section class="group active" id="panel-direct"><div class="empty">输入城市与日期后查询</div></section>
-      <section class="group" id="panel-transfer"><div class="empty">—</div></section>
+      <section class="group active" id="panel-direct"><div class="empty">输入城市与日期后点「查直达」</div></section>
+      <section class="group" id="panel-transfer"><div class="empty">点「查中转」开始枚举枢纽</div></section>
     </main>
 
     <script type="module" src="./web/main.js"></script>

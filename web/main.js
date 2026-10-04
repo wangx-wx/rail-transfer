@@ -1,10 +1,11 @@
 /**
  * 前端入口 —— 串联表单、编排、渲染
  *
+ * 查询流程（用户选定）：**直达与中转分开查**，各查各的，互不干扰。
  * 零构建、原生 ESM：浏览器直接加载本文件。
  */
 
-import { CITY_STATIONS, ALL_CITIES } from './data/stations.js';
+import { CITY_STATIONS, ALL_CITIES, STATION_NAMES } from './data/stations.js';
 import { PRESALE_DAYS } from '../shared/constants.js';
 import { API_BASE } from './config.js';
 import * as api from './lib/api.js';
@@ -45,77 +46,109 @@ function checkDate(date) {
   return null;
 }
 
+/** 读取并校验表单，返回查询上下文或 null（已设置错误状态） */
+function readForm() {
+  const date = $('date').value;
+  const err = checkDate(date);
+  if (err) {
+    setStatus(err, 'err');
+    return null;
+  }
+  const from = resolveCity($('from').value);
+  const to = resolveCity($('to').value);
+  if (!from) return setStatusErr(`未识别的城市：${$('from').value}`);
+  if (!to) return setStatusErr(`未识别的城市：${$('to').value}`);
+  return {
+    from,
+    to,
+    date,
+    seat: $('seat').value,
+    period: $('period').value,
+    token: $('token').value.trim(),
+  };
+}
+
+function setStatusErr(msg) {
+  setStatus(msg, 'err');
+  return null;
+}
+
 let running = false;
 
-async function onSubmit(e) {
-  e.preventDefault();
+/** 查直达 */
+async function onDirect() {
   if (running) return;
-
-  const fromName = $('from').value.trim();
-  const toName = $('to').value.trim();
-  const date = $('date').value;
-  const seat = $('seat').value;
-  const period = $('period').value;
-  const token = $('token').value.trim();
-
-  const err = checkDate(date);
-  if (err) return setStatus(err, 'err');
-
-  const from = resolveCity(fromName);
-  const to = resolveCity(toName);
-  if (!from) return setStatus(`未识别的城市：${fromName}`, 'err');
-  if (!to) return setStatus(`未识别的城市：${toName}`, 'err');
+  const ctx = readForm();
+  if (!ctx) return;
 
   running = true;
-  $('submit').disabled = true;
+  $('btn-direct').disabled = true;
   $('panel-direct').innerHTML = '<div class="empty">查询中…</div>';
-  $('panel-transfer').innerHTML = '<div class="empty">查询中…</div>';
+  showTab('direct');
   setStatus('正在查询直达…');
 
-  /** 累积所有中转方案 */
-  const allPlans = [];
-  let stationMap = {};
+  try {
+    const r = await api.leftTicket({ from: ctx.from.code, to: ctx.to.code, date: ctx.date }, { token: ctx.token, base: API_BASE });
+    if (!r.ok) {
+      $('panel-direct').innerHTML = `<div class="empty err">直达查询失败：${r.error}</div>`;
+      return setStatus(`直达查询失败：${r.error}`, 'err');
+    }
+    const { trains, stationMap } = parseLeftTicket(r.data);
+    // 合并全量站名表（直达响应自带的 map 只覆盖少数站）
+    const merged = { ...STATION_NAMES, ...stationMap };
+    const filtered = filterByPeriod(trains, ctx.period);
+    $('panel-direct').innerHTML = renderTrains(filtered, merged, ctx.seat);
+    setStatus(`直达 ${filtered.length} 趟${filtered.length !== trains.length ? `（共 ${trains.length}，已按时段筛选）` : ''}`);
+  } catch (e) {
+    $('panel-direct').innerHTML = `<div class="empty err">查询出错：${e}</div>`;
+    setStatus(`查询出错：${e}`, 'err');
+  } finally {
+    running = false;
+    $('btn-direct').disabled = false;
+  }
+}
 
-  const renderTransferPanel = () => {
-    const groups = processPlans(allPlans);
-    $('panel-transfer').innerHTML = renderTransfers(groups);
+/** 查中转 */
+async function onTransfer() {
+  if (running) return;
+  const ctx = readForm();
+  if (!ctx) return;
+
+  running = true;
+  $('btn-transfer').disabled = true;
+  $('panel-transfer').innerHTML = '<div class="empty">查询中…</div>';
+  showTab('transfer');
+  setStatus('正在查询官方基线…');
+
+  const allPlans = [];
+  const renderPanel = () => {
+    $('panel-transfer').innerHTML = renderTransfers(processPlans(allPlans));
   };
 
   try {
     await runQuery(
-      { from: from.code, to: to.code, date, exclude: [...from.stations, ...to.stations] },
+      { from: ctx.from.code, to: ctx.to.code, date: ctx.date, exclude: [...ctx.from.stations, ...ctx.to.stations] },
       {
-        leftTicket: (p) => api.leftTicket(p, { token, base: API_BASE }),
-        transfer: (p) => api.transfer(p, { token, base: API_BASE }),
+        leftTicket: (p) => api.leftTicket(p, { token: ctx.token, base: API_BASE }),
+        transfer: (p) => api.transfer(p, { token: ctx.token, base: API_BASE }),
       },
       {
-        onDirect: (r) => {
-          if (!r.ok) {
-            $('panel-direct').innerHTML = `<div class="empty err">直达查询失败：${r.error}</div>`;
-            return setStatus(`直达查询失败：${r.error}`, 'err');
-          }
-          const { trains, stationMap: sm } = parseLeftTicket(r.data);
-          stationMap = sm;
-          const filtered = filterByPeriod(trains, period);
-          $('panel-direct').innerHTML = renderTrains(filtered, sm, seat);
-          setStatus(`直达 ${filtered.length} 趟（共 ${trains.length}）`);
-        },
+        onDirect: () => {}, // 中转查询不展示直达
         onBaseline: (r) => {
           if (!r.ok) return setStatus('官方基线查询失败，改用内置枢纽兜底…', 'warn');
           for (const item of r.items) {
             if (item.ok && item.data) allPlans.push(...parseTransfer(item.data).plans);
           }
-          renderTransferPanel();
+          renderPanel();
         },
         onSegment: (s) => {
-          const ok = s.items.filter((i) => i.ok);
-          for (const item of ok) {
-            if (item.data) allPlans.push(...parseTransfer(item.data).plans);
+          for (const item of s.items) {
+            if (item.ok && item.data) allPlans.push(...parseTransfer(item.data).plans);
           }
           const failed = s.items.filter((i) => !i.ok);
-          renderTransferPanel();
+          renderPanel();
           setStatus(
-            `中转：已查 ${s.index + 1}/${s.total} 段，累计 ${allPlans.length} 条方案` +
+            `已查 ${s.index + 1}/${s.total} 段，累计 ${allPlans.length} 条方案` +
               (failed.length ? `（${failed.length} 个枢纽失败）` : ''),
             failed.length ? 'warn' : '',
           );
@@ -127,7 +160,7 @@ async function onSubmit(e) {
     setStatus(`查询出错：${e}`, 'err');
   } finally {
     running = false;
-    $('submit').disabled = false;
+    $('btn-transfer').disabled = false;
   }
 }
 
@@ -137,20 +170,23 @@ function setStatus(text, cls = '') {
   el.textContent = text;
 }
 
-// ── 标签页切换（D27）────────────────────────────────────
+/** 切换标签页（D27） */
+function showTab(name) {
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  }
+  $('panel-direct').classList.toggle('active', name === 'direct');
+  $('panel-transfer').classList.toggle('active', name === 'transfer');
+}
+
 function initTabs() {
   for (const btn of document.querySelectorAll('.tabs button')) {
-    btn.addEventListener('click', () => {
-      for (const b of document.querySelectorAll('.tabs button')) {
-        b.setAttribute('aria-selected', String(b === btn));
-      }
-      document.getElementById('panel-direct').classList.toggle('active', btn.dataset.tab === 'direct');
-      document.getElementById('panel-transfer').classList.toggle('active', btn.dataset.tab === 'transfer');
-    });
+    btn.addEventListener('click', () => showTab(btn.dataset.tab));
   }
 }
 
 fillCities();
 $('date').value = defaultDate();
-$('form').addEventListener('submit', onSubmit);
+$('btn-direct').addEventListener('click', onDirect);
+$('btn-transfer').addEventListener('click', onTransfer);
 initTabs();

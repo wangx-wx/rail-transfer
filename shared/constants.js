@@ -104,7 +104,13 @@ export const COL = {
   secretStr: 0,
   trainNo: 2,
   trainCode: 3,
+  /** 始发站码（非上车站） */
+  startStationCode: 4,
+  /** 终到站码（非下车站） */
+  endStationCode: 5,
+  /** 上车站码 */
   fromStationCode: 6,
+  /** 下车站码 */
   toStationCode: 7,
   startTime: 8,
   arriveTime: 9,
