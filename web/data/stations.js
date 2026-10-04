@@ -1,11 +1,11 @@
 /**
  * 城市 → 站点表（自动生成，勿手改）
  *
- * 生成：node tools/gen-stations.mjs
- * 来源：spike/station_name.js（城市分组）+ 12306 leftTicket 采样（主站排名）
+ * 生成：node tools/gen-stations.mjs（纯静态，零网络）
+ * 来源：spike/station_name.js（城市分组）+ 固化主站清单
  * 生成日期：2026-10-04
  *
- * CITY_STATIONS：40 个主要城市，含采样出的 Top-N 主站（D18）
+ * CITY_STATIONS：40 个主要城市，含 Top-N 主站（D18）
  * ALL_CITIES：全部 432 个城市 → 代表站码（兜底，保证任意城市可查）
  *
  * ⚠️ 主站随 OD 变化，本表只是枢纽枚举的候选起点（见 spec/技术方案.md §6.1）。
@@ -16,20 +16,20 @@ export const CITY_STATIONS = {
     "code": "BJP",
     "name": "北京",
     "stations": [
-      "BXP",
-      "FTP",
       "BJP",
-      "QIP"
+      "VNP",
+      "BXP",
+      "FTP"
     ]
   },
   "上海": {
     "code": "SHH",
     "name": "上海",
     "stations": [
-      "AOH",
       "SHH",
-      "IMH",
-      "SNH"
+      "AOH",
+      "SNH",
+      "IMH"
     ]
   },
   "广州": {
@@ -39,16 +39,15 @@ export const CITY_STATIONS = {
       "GZQ",
       "IZQ",
       "GBA",
-      "XWQ",
-      "GGQ"
+      "GBQ"
     ]
   },
   "深圳": {
     "code": "SZQ",
     "name": "深圳",
     "stations": [
-      "IOQ",
       "SZQ",
+      "IOQ",
       "NZQ",
       "BJQ"
     ]
@@ -57,9 +56,10 @@ export const CITY_STATIONS = {
     "code": "TJP",
     "name": "天津",
     "stations": [
-      "TXP",
       "TJP",
-      "FHP"
+      "TXP",
+      "TIP",
+      "WWP"
     ]
   },
   "重庆": {
@@ -67,10 +67,9 @@ export const CITY_STATIONS = {
     "name": "重庆",
     "stations": [
       "CQW",
-      "CXW",
       "CUW",
-      "CYW",
-      "COE"
+      "CXW",
+      "CYW"
     ]
   },
   "成都": {
@@ -87,9 +86,9 @@ export const CITY_STATIONS = {
     "code": "HZH",
     "name": "杭州",
     "stations": [
+      "HZH",
       "HGH",
       "HVU",
-      "HZH",
       "XHH"
     ]
   },
@@ -97,8 +96,8 @@ export const CITY_STATIONS = {
     "code": "NJH",
     "name": "南京",
     "stations": [
-      "NKH",
-      "NJH"
+      "NJH",
+      "NKH"
     ]
   },
   "武汉": {
@@ -115,9 +114,9 @@ export const CITY_STATIONS = {
     "code": "XAY",
     "name": "西安",
     "stations": [
+      "XAY",
       "EAY",
       "XDY",
-      "XAY",
       "CAY"
     ]
   },
@@ -125,26 +124,26 @@ export const CITY_STATIONS = {
     "code": "CSQ",
     "name": "长沙",
     "stations": [
-      "CWQ",
-      "CSQ"
+      "CSQ",
+      "CWQ"
     ]
   },
   "郑州": {
     "code": "ZZF",
     "name": "郑州",
     "stations": [
-      "ZAF",
       "ZZF",
-      "ZIF",
-      "EZF"
+      "ZAF",
+      "XPF",
+      "ZIF"
     ]
   },
   "济南": {
     "code": "JNK",
     "name": "济南",
     "stations": [
-      "JGK",
       "JNK",
+      "JGK",
       "MDK",
       "JAK"
     ]
@@ -153,8 +152,8 @@ export const CITY_STATIONS = {
     "code": "QDK",
     "name": "青岛",
     "stations": [
-      "QHK",
       "QDK",
+      "QHK",
       "QUK",
       "CEK"
     ]
@@ -163,24 +162,25 @@ export const CITY_STATIONS = {
     "code": "SYT",
     "name": "沈阳",
     "stations": [
+      "SYT",
       "SBT",
-      "SYT"
+      "SOT"
     ]
   },
   "大连": {
     "code": "DLT",
     "name": "大连",
     "stations": [
-      "DFT",
-      "DLT"
+      "DLT",
+      "DFT"
     ]
   },
   "哈尔滨": {
     "code": "HBB",
     "name": "哈尔滨",
     "stations": [
-      "VAB",
       "HBB",
+      "VAB",
       "VBB"
     ]
   },
@@ -199,23 +199,23 @@ export const CITY_STATIONS = {
       "SJP",
       "VVP",
       "ZHP",
-      "GUP"
+      "GNP"
     ]
   },
   "太原": {
     "code": "TYV",
     "name": "太原",
     "stations": [
-      "TNV",
-      "TYV"
+      "TYV",
+      "TNV"
     ]
   },
   "合肥": {
     "code": "HFH",
     "name": "合肥",
     "stations": [
-      "ENH",
       "HFH",
+      "ENH",
       "COH",
       "HFU"
     ]
@@ -224,43 +224,53 @@ export const CITY_STATIONS = {
     "code": "FZS",
     "name": "福州",
     "stations": [
-      "FYS",
-      "FZS"
+      "FZS",
+      "FYS"
     ]
   },
   "厦门": {
     "code": "XMS",
     "name": "厦门",
     "stations": [
-      "XMS"
+      "XMS",
+      "XKS"
     ]
   },
   "南昌": {
     "code": "NCG",
     "name": "南昌",
     "stations": [
-      "NCG"
+      "NCG",
+      "NXG",
+      "NUG",
+      "HOG"
     ]
   },
   "昆明": {
     "code": "KMM",
     "name": "昆明",
     "stations": [
-      "KMM"
+      "KMM",
+      "KOM"
     ]
   },
   "贵阳": {
     "code": "GIW",
     "name": "贵阳",
     "stations": [
-      "GIW"
+      "GIW",
+      "KQW",
+      "KEW",
+      "FVW"
     ]
   },
   "南宁": {
     "code": "NNZ",
     "name": "南宁",
     "stations": [
-      "NNZ"
+      "NNZ",
+      "NFZ",
+      "NRZ"
     ]
   },
   "兰州": {
@@ -268,7 +278,9 @@ export const CITY_STATIONS = {
     "name": "兰州",
     "stations": [
       "LZJ",
-      "LAJ"
+      "LAJ",
+      "ABJ",
+      "ZRJ"
     ]
   },
   "西宁": {
@@ -282,22 +294,26 @@ export const CITY_STATIONS = {
     "code": "YIJ",
     "name": "银川",
     "stations": [
-      "YIJ"
+      "YIJ",
+      "HFJ",
+      "UWJ",
+      "NOJ"
     ]
   },
   "乌鲁木齐": {
     "code": "WAR",
     "name": "乌鲁木齐",
     "stations": [
-      "WAR"
+      "WAR",
+      "WMR"
     ]
   },
   "呼和浩特": {
     "code": "HHC",
     "name": "呼和浩特",
     "stations": [
-      "NDC",
-      "HHC"
+      "HHC",
+      "NDC"
     ]
   },
   "海口": {
@@ -318,21 +334,30 @@ export const CITY_STATIONS = {
     "code": "SZH",
     "name": "苏州",
     "stations": [
-      "SZH"
+      "SZH",
+      "OHH",
+      "ZAU",
+      "SMU"
     ]
   },
   "无锡": {
     "code": "WXH",
     "name": "无锡",
     "stations": [
-      "WXH"
+      "WXH",
+      "WGH",
+      "KYH",
+      "IFH"
     ]
   },
   "常州": {
     "code": "CZH",
     "name": "常州",
     "stations": [
-      "CZH"
+      "CZH",
+      "ESH",
+      "JTU",
+      "WJU"
     ]
   },
   "宁波": {
@@ -346,8 +371,10 @@ export const CITY_STATIONS = {
     "code": "RZH",
     "name": "温州",
     "stations": [
+      "RZH",
       "VRH",
-      "RZH"
+      "URH",
+      "NJU"
     ]
   }
 };
