@@ -1,7 +1,6 @@
 # 部署静态前端到 GitHub Pages（T17）
 #
-# 零构建：本仓库无打包步骤，直接上传源码。入口 index.html 在仓库根，
-# 它引用 ./web/* 与 ./shared/*，二者都是根下真实目录，相对路径天然自洽。
+# Vite 构建（T4）→ 上传 dist/ 产物。base=/rail-transfer/ 已在 vite.config.ts 设好。
 #
 # 启用：仓库 Settings → Pages → Source 选 "GitHub Actions"。
 
@@ -22,16 +21,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
       - id: deployment
         uses: actions/deploy-pages@v4

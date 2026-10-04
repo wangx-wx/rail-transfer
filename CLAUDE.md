@@ -18,25 +18,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `docs/`、`spike/` 是前序探索资料（被 .gitignore 忽略，仅存本地），部分结论已过时——见 `spec/产品方案.md` 第六节。
 
-## 根本约束：零依赖、零构建、零环境变量
+## 工具链：Vite + TypeScript + vitest
 
-**不得在本机安装任何应用或依赖**（用户明确要求）。因此：
+**约束**：不在系统层面安装东西（`brew install` 等）；项目内的 npm 依赖正常使用。
 
-- 前端与 Worker 用**原生 ESM**（`.js` + JSDoc 类型注解），无打包、无 `tsc`。
-- 测试用 Node 内置 `node:test`，`package.json` **无 dependencies**。
-- 本地开发用自建 `tools/dev-server.mjs`（静态托管 + 进程内调用 `worker/index.js`），**不需要 wrangler**。
-- 取数层（`worker/source.js`）环境无关，Node 与 Workers 共用同一份代码。
+- **前端**：Vite 构建，TypeScript（strict），产物进 `dist/`。
+- **Worker**：TypeScript，wrangler 自带 esbuild 打包。
+- **测试**：vitest，分两组 project（见 `vitest.config.ts`）：
+  - `worker/**` 跑在**真实 workerd 运行时**（`@cloudflare/vitest-pool-workers`），
+    能测到 `getSetCookie()`、Cache API、isolate 复用等 Workers 专有行为。
+  - `web/**` 跑 Node 环境（纯函数 + 读 `test/fixtures/`）。
+- **类型共享**：`shared/` 放类型与常量，两边都能 import。
 
-常用命令（无安装步骤）：
+常用命令：
 ```bash
-node --test                 # 跑全部测试
-node tools/dev-server.mjs   # 本地开发服务器（默认 8765）
+npm install                 # 首次
+npm test                    # 跑全部测试（vitest）
+npm run typecheck           # tsc --noEmit
+npm run dev                 # Vite 开发服务器（/api 代理到 :8787）
+npm run build               # 构建前端到 dist/
 node tools/gen-stations.mjs # 重新生成城市站表（纯静态，零网络）
+node tools/dev-server.mjs   # 零依赖本地服务器（备选，进程内调 Worker）
 ```
 
 ## 开发规范
 
-**测试**：新写的代码要配套测试用例——`web/` 的页面脚本、`worker/` 的代理脚本都算。提交前必须跑通 `node --test`。
+**测试**：新写的代码要配套测试用例——`web/` 的页面脚本、`worker/` 的代理脚本都算。提交前必须跑通 `npm test` 与 `npm run typecheck`。
 
 **提交**：每次改动完成任务、测试通过后**先提交代码**。格式 `type(scope): desc`，type 取
 `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。
