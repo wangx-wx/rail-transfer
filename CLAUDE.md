@@ -22,12 +22,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **约束**：不在系统层面安装东西（`brew install` 等）；项目内的 npm 依赖正常使用。
 
-- **前端**：Vite 构建，TypeScript（strict），产物进 `dist/`。
+- **前端**：**React 19 + Ant Design 6**，Vite 构建，TypeScript（strict），产物进 `dist/`。
+  组件放 `web/components/`，视图模型纯函数放 `web/lib/view.ts`。
 - **Worker**：TypeScript，wrangler 自带 esbuild 打包。
-- **测试**：vitest，分两组 project（见 `vitest.config.ts`）：
+- **测试**：vitest，分三组 project（见 `vitest.config.ts`）：
   - `worker/**` 跑在**真实 workerd 运行时**（`@cloudflare/vitest-pool-workers`），
     能测到 `getSetCookie()`、Cache API、isolate 复用等 Workers 专有行为。
-  - `web/**` 跑 Node 环境（纯函数 + 读 `test/fixtures/`）。
+  - `web/**/*.test.ts` 跑 **Node** 环境（纯函数 + 读 `test/fixtures/`）。
+  - `web/**/*.test.tsx` 跑 **jsdom** 环境（React 组件渲染，`@testing-library/react`）。
+    按扩展名区分：纯函数写 `.test.ts`，组件测试写 `.test.tsx`。
 - **类型共享**：`shared/` 放类型与常量，两边都能 import。
 
 常用命令：
@@ -44,6 +47,8 @@ node tools/dev-server.mjs   # 零依赖本地服务器（备选，进程内调 W
 ## 开发规范
 
 **测试**：新写的代码要配套测试用例——`web/` 的页面脚本、`worker/` 的代理脚本都算。提交前必须跑通 `npm test` 与 `npm run typecheck`。
+
+**antd 6 注意**：优先用新 API（`Alert` 用 `title`、`Space` 用 `orientation`、`Collapse` 用 `items`），旧名会打废弃警告。不要写自定义 `<style>` 覆盖 `.ant-*` 内部类，改主题用 `ConfigProvider theme.token`。
 
 **提交**：每次改动完成任务、测试通过后**先提交代码**。格式 `type(scope): desc`，type 取
 `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。

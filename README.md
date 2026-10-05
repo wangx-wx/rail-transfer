@@ -2,7 +2,7 @@
 
 12306 中转换乘查询工具 —— **比官方网页给出更多中转方案**。
 
-> 状态：**v1 骨架已建成并端到端跑通**（Vite + TypeScript + vitest）。
+> 状态：**v1 骨架已建成并端到端跑通**（React 19 + Ant Design 6，Vite + TypeScript + vitest）。
 >
 > 产品范围见 [`spec/产品方案.md`](spec/产品方案.md)，技术实现见 [`spec/技术方案.md`](spec/技术方案.md)。
 > 下文「部署架构」「目录结构」两节描述的是**开工前**的设想，已被技术方案取代，保留仅作背景。
@@ -77,7 +77,7 @@ spike/
 
 ```bash
 npm install                 # 首次
-npm test                    # 跑全部测试（vitest；worker 跑真实 workerd）
+npm test                    # 跑全部测试（vitest；worker 跑真实 workerd，组件跑 jsdom）
 npm run typecheck           # tsc --noEmit
 npm run dev                 # Vite 开发服务器（/api 代理到 Worker）
 npm run build               # 构建前端到 dist/
