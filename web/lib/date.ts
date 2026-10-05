@@ -15,9 +15,9 @@ function beijingDate(ms: number): string {
   return new Date(ms + TZ_OFFSET).toISOString().slice(0, 10);
 }
 
-/** 默认日期 = 今天 + 3 天 */
+/** 默认日期 = 明天（今天 + 1 天） */
 export function defaultDate(now: number = Date.now()): string {
-  return beijingDate(now + 3 * 86400e3);
+  return beijingDate(now + 86400e3);
 }
 
 /** 校验日期在预售期内（D32），返回错误文案或 null */

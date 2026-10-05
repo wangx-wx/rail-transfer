@@ -2,15 +2,15 @@
  * 查询表单（D26 / D39）
  *
  * 城市用 AutoComplete 联想（替代原生 datalist），日期用 DatePicker，
- * 席别选项直接取自 shared/constants.ts 的 SEAT_OPTIONS（单一数据源）。
+ * 起终点之间可一键对调，查询按钮居右。
  */
 
 import { useMemo } from 'react';
-import { AutoComplete, Button, DatePicker, Form, Input, Select, Space } from 'antd';
+import { AutoComplete, Button, DatePicker, Form, Input, Space, Tooltip } from 'antd';
+import { SwapOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
-import { SEAT_OPTIONS } from '../../shared/constants.ts';
 import { resolveCity, allCityNames } from '../lib/city.ts';
 import type { ResolvedCity } from '../lib/city.ts';
 import { defaultDate, checkDate } from '../lib/date.ts';
@@ -20,7 +20,6 @@ interface FormValues {
   from: string;
   to: string;
   date: Dayjs;
-  seat: string;
   token?: string;
 }
 
@@ -29,6 +28,7 @@ export interface QueryContext {
   from: ResolvedCity;
   to: ResolvedCity;
   date: string;
+  /** 参考席别（无席别筛选后固定为二等座，用于余票高亮与中转参考价） */
   seat: string;
   token: string;
 }
@@ -43,7 +43,11 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
   const [form] = Form.useForm<FormValues>();
 
   const cityOptions = useMemo(() => allCityNames().map((n) => ({ value: n })), []);
-  const seatOptions = useMemo(() => SEAT_OPTIONS.map((s) => ({ value: s.code, label: s.name })), []);
+
+  /** 对调出发与到达城市 */
+  function swapCities(): void {
+    form.setFieldsValue({ from: form.getFieldValue('to'), to: form.getFieldValue('from') });
+  }
 
   /** 校验并转成 QueryContext；任一项不合法则提示并返回 null */
   function buildContext(v: FormValues): QueryContext | null {
@@ -62,7 +66,7 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
       form.setFields([{ name: 'to', errors: [`未识别的城市：${v.to}`] }]);
       return null;
     }
-    return { from, to, date: v.date.format('YYYY-MM-DD'), seat: v.seat, token: (v.token ?? '').trim() };
+    return { from, to, date: v.date.format('YYYY-MM-DD'), seat: 'ZE', token: (v.token ?? '').trim() };
   }
 
   /** 两个按钮共用的提交入口 */
@@ -81,7 +85,7 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
     <Form
       form={form}
       layout="inline"
-      initialValues={{ date: dayjs(defaultDate()), seat: 'ZE' }}
+      initialValues={{ date: dayjs(defaultDate()) }}
       style={{ rowGap: 12, marginBottom: 16, padding: 16, background: '#fff', borderRadius: 12 }}
     >
       <Form.Item name="from" label="出发城市" rules={[{ required: true, message: '请输入出发城市' }]}>
@@ -91,6 +95,17 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
           placeholder="北京"
           style={{ width: 140 }}
         />
+      </Form.Item>
+
+      <Form.Item label={null} style={{ marginInlineEnd: 0 }}>
+        <Tooltip title="对调出发与到达城市">
+          <Button
+            type="text"
+            icon={<SwapOutlined />}
+            aria-label="对调出发与到达城市"
+            onClick={swapCities}
+          />
+        </Tooltip>
       </Form.Item>
 
       <Form.Item name="to" label="到达城市" rules={[{ required: true, message: '请输入到达城市' }]}>
@@ -106,15 +121,11 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
         <DatePicker placeholder="选择日期" />
       </Form.Item>
 
-      <Form.Item name="seat" label="席别">
-        <Select options={seatOptions} style={{ width: 110 }} />
-      </Form.Item>
-
       <Form.Item name="token" label="口令">
         <Input placeholder="可选" autoComplete="off" style={{ width: 120 }} />
       </Form.Item>
 
-      <Form.Item>
+      <Form.Item label={null} style={{ marginLeft: 'auto', marginInlineEnd: 0 }}>
         <Space>
           <Button type="primary" htmlType="button" loading={querying} onClick={() => submit(onDirect)}>
             查直达

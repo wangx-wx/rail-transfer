@@ -1,30 +1,42 @@
 /**
  * QueryForm 组件测试（jsdom）
  *
- * 覆盖：城市联想选项、席别选项来自 SEAT_OPTIONS、未填必填项时不触发查询。
+ * 覆盖：城市联想、起终点对调、未填必填项时不触发查询。
  */
 
 import { test, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import QueryForm from './QueryForm.tsx';
-import { SEAT_OPTIONS } from '../../shared/constants.ts';
 
-test('QueryForm：渲染城市、日期、席别、口令与两个按钮', () => {
+test('QueryForm：渲染城市、日期、口令与两个按钮', () => {
   render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} />);
   expect(screen.getByText('出发城市')).toBeTruthy();
   expect(screen.getByText('到达城市')).toBeTruthy();
   expect(screen.getByText('日期')).toBeTruthy();
-  expect(screen.getByText('席别')).toBeTruthy();
   expect(screen.getByRole('button', { name: '查直达' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '查中转' })).toBeTruthy();
 });
 
-test('QueryForm：席别选项来自 SEAT_OPTIONS（单一数据源）', async () => {
+test('QueryForm：无席别筛选框', () => {
   render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} />);
-  // 默认选中第一项，展示其中文名
-  const first = SEAT_OPTIONS[0]!;
-  expect(screen.getByText(first.name)).toBeTruthy();
+  expect(screen.queryByText('席别')).toBeNull();
+});
+
+test('QueryForm：对调按钮交换出发与到达城市', async () => {
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} />);
+  // AutoComplete 的 placeholder 不在 input 上，故用 id 定位
+  const from = container.querySelector<HTMLInputElement>('#from')!;
+  const to = container.querySelector<HTMLInputElement>('#to')!;
+  fireEvent.change(from, { target: { value: '北京' } });
+  fireEvent.change(to, { target: { value: '上海' } });
+
+  fireEvent.click(screen.getByRole('button', { name: '对调出发与到达城市' }));
+
+  await waitFor(() => {
+    expect(from.value).toBe('上海');
+    expect(to.value).toBe('北京');
+  });
 });
 
 test('QueryForm：未填城市时点查直达不触发查询', async () => {

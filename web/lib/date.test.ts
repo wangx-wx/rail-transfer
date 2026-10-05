@@ -11,8 +11,8 @@ import { PRESALE_DAYS } from '../../shared/constants.ts';
 /** 固定基准：2026-10-05 12:00 北京时间（= 04:00 UTC） */
 const NOW = Date.UTC(2026, 9, 5, 4, 0, 0);
 
-test('defaultDate：今天 + 3 天', () => {
-  expect(defaultDate(NOW)).toBe('2026-10-08');
+test('defaultDate：明天', () => {
+  expect(defaultDate(NOW)).toBe('2026-10-06');
 });
 
 test('checkDate：今天与预售期末日均可查', () => {
