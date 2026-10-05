@@ -32,6 +32,8 @@ interface DirectResult {
   trains: Train[];
   stationMap: Record<string, string>;
   seat: string;
+  /** 查询日期（YYYY-MM-DD，查价用） */
+  date: string;
 }
 
 export default function App() {
@@ -114,7 +116,7 @@ export default function App() {
       }
       const { trains, stationMap } = parseLeftTicket(r.data);
       // 合并全量站名表（直达响应自带的 map 只覆盖少数站）
-      setDirect({ trains, stationMap: { ...STATION_NAMES, ...stationMap }, seat: ctx.seat });
+      setDirect({ trains, stationMap: { ...STATION_NAMES, ...stationMap }, seat: ctx.seat, date: ctx.date });
       setStatus({ text: `直达 ${trains.length} 趟`, kind: 'info' });
     } catch (e) {
       setStatus({ text: `查询出错：${e}`, kind: 'error' });

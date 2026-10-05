@@ -17,6 +17,8 @@ interface Props {
     trains: Train[];
     stationMap: Record<string, string>;
     seat: string;
+    /** 查询日期（YYYY-MM-DD，查价用） */
+    date: string;
   } | null;
   /** 价格缓存（键 = priceKey） */
   prices: Record<string, number>;
@@ -40,7 +42,7 @@ const SEAT_COLOR: Record<SeatState, string> = {
 
 export default function TrainList({ result, prices, loadingPrice, onQueryPrice }: Props) {
   if (!result) return null;
-  const { trains, stationMap, seat } = result;
+  const { trains, stationMap, seat, date } = result;
   if (!trains.length) return <Empty description="没有直达车次" />;
 
   return (
@@ -97,7 +99,7 @@ export default function TrainList({ result, prices, loadingPrice, onQueryPrice }
                   type="link"
                   disabled={!key}
                   loading={key ? loadingPrice.has(key) : false}
-                  onClick={() => key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, t.trainDate)}
+                  onClick={() => key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, date)}
                 >
                   查价
                 </Button>
