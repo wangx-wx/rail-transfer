@@ -5,7 +5,7 @@
  * 本文件无副作用、无网络，可直接单测。
  */
 
-import { COL, SEAT_COLUMNS, NO_TICKET } from '../../shared/constants.ts';
+import { COL, SEAT_COLUMNS, NO_TICKET, PRICE_KEY_SEAT } from '../../shared/constants.ts';
 import type {
   LeftTicketData,
   PriceData,
@@ -153,20 +153,23 @@ export function extractHubCodes(middleStationList: string[] | undefined): string
 }
 
 /**
- * 解析 queryTicketPrice 响应，取出价格（元）。
+ * 解析 queryTicketPrice 响应，取出各席别价格（元）。
  *
- * 响应形如 `{"O":"¥626.0","WZ":"¥626.0","train_no":"...","OT":[]}`。
- * **按值取**：只认带 `¥` 前缀的字符串，取第一个（一次只查一个席别，故唯一）。
- * 无价格（席别不存在 / 该席别无票）时返回 null。
+ * 响应形如 `{"O":"¥626.0","M":"¥1033.0","A9":"¥2315.0","WZ":"¥626.0","train_no":"...","OT":[]}`。
+ * 返回 `{ 界面席别码: 价格 }`（键经 `PRICE_KEY_SEAT` 归一，如 `A9` → `SWZ`）。
+ * **按值取**：只认带 `¥` 前缀的字符串；其余（`train_no` / `OT` / 纯数字内部码）忽略。
+ * 无价格时返回空对象。
  */
-export function parsePrice(raw: UpstreamEnvelope<PriceData> | undefined): number | null {
+export function parsePrice(raw: UpstreamEnvelope<PriceData> | undefined): Record<string, number> {
   const data = raw?.data;
-  if (!data) return null;
-  for (const v of Object.values(data)) {
-    if (typeof v === 'string' && v.startsWith('¥')) {
-      const n = Number.parseFloat(v.slice(1));
-      if (Number.isFinite(n)) return n;
-    }
+  const out: Record<string, number> = {};
+  if (!data) return out;
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v !== 'string' || !v.startsWith('¥')) continue;
+    const n = Number.parseFloat(v.slice(1));
+    if (!Number.isFinite(n)) continue;
+    const seat = PRICE_KEY_SEAT[k];
+    if (seat) out[seat] = n;
   }
-  return null;
+  return out;
 }

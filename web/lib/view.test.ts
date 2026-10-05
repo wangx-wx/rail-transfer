@@ -5,7 +5,7 @@
 
 import { test, expect } from 'vitest';
 
-import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub, priceLabel } from './view.ts';
+import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub, priceLabel, seatPrices } from './view.ts';
 import { annotatePlans, mergePlans } from './plans.ts';
 import type { PlanFlags, TransferPlan } from '../../shared/types.ts';
 
@@ -111,4 +111,13 @@ test('priceLabel：未查到 → 空串', () => {
   expect(priceLabel(null)).toBe('');
   expect(priceLabel(undefined)).toBe('');
   expect(priceLabel(NaN)).toBe('');
+});
+
+test('seatPrices：按 SEAT_OPTIONS 顺序，只保留有价的', () => {
+  expect(seatPrices({ ZY: 1033, ZE: 626 })).toEqual([
+    { code: 'ZE', name: '二等座', label: '¥626' },
+    { code: 'ZY', name: '一等座', label: '¥1033' },
+  ]);
+  expect(seatPrices(undefined)).toEqual([]);
+  expect(seatPrices({})).toEqual([]);
 });

@@ -14,7 +14,7 @@ import { runQuery } from './lib/orchestrate.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
 import { processPlans } from './lib/plans.ts';
 import { priceKey } from './lib/view.ts';
-import { SEAT_TYPE_CODE } from '../shared/constants.ts';
+import { PRICE_SEAT_TYPES } from '../shared/constants.ts';
 import type { QueryContext } from './components/QueryForm.tsx';
 import QueryForm from './components/QueryForm.tsx';
 import StatusBar from './components/StatusBar.tsx';
@@ -48,18 +48,20 @@ export default function App() {
   // 流式累积的中转方案（避免每段拷贝大数组进 state）
   const plansRef = useRef<TransferPlan[]>([]);
 
-  // 价格缓存（键 = priceKey），直达与中转每程共用
-  const [prices, setPrices] = useState<Record<string, number>>({});
+  // 价格缓存（键 = priceKey → 各席别价格表），直达与中转每程共用
+  const [prices, setPrices] = useState<Record<string, Record<string, number>>>({});
   // 正在查价的车次键，用于按钮 loading 态
   const [loadingPrice, setLoadingPrice] = useState<Set<string>>(new Set());
-  // 查价用的查询上下文（口令 / 席别），查价时复用
+  // 查价用的查询上下文（口令），查价时复用
   const ctxRef = useRef<QueryContext | null>(null);
   // 当前查询日期（传给列表用于查价）
   const [queryDate, setQueryDate] = useState('');
+  // 当前查询席别（合计参考价按它求和）
+  const [ctxSeat, setCtxSeat] = useState('ZE');
 
   /**
-   * 查一段行程的价格（1 次请求）。已在缓存或查过则跳过。
-   * 直达车次与中转每程共用。
+   * 查一段行程的各席别价格（1 次请求，传全部席别码）。
+   * 已在缓存或查过则跳过。直达车次与中转每程共用。
    */
   const fetchPrice = useCallback(
     async (trainNo: string, fromStationNo: string | undefined, toStationNo: string | undefined, date: string) => {
@@ -71,17 +73,11 @@ export default function App() {
       setLoadingPrice((prev) => new Set(prev).add(key));
       try {
         const r = await api.price(
-          {
-            trainNo,
-            fromStationNo,
-            toStationNo,
-            seatTypes: SEAT_TYPE_CODE[ctx.seat] ?? 'O',
-            date,
-          },
+          { trainNo, fromStationNo, toStationNo, seatTypes: PRICE_SEAT_TYPES, date },
           { token: ctx.token, base: API_BASE },
         );
-        const price = r.ok ? parsePrice(r.data) : null;
-        if (price != null) setPrices((prev) => ({ ...prev, [key]: price }));
+        const map = r.ok ? parsePrice(r.data) : {};
+        if (Object.keys(map).length) setPrices((prev) => ({ ...prev, [key]: map }));
       } finally {
         setLoadingPrice((prev) => {
           const next = new Set(prev);
@@ -99,6 +95,7 @@ export default function App() {
     runningRef.current = true;
     ctxRef.current = ctx;
     setQueryDate(ctx.date);
+    setCtxSeat(ctx.seat);
     setQuerying(true);
     setView('direct');
     setDirect(null);
@@ -132,6 +129,7 @@ export default function App() {
     runningRef.current = true;
     ctxRef.current = ctx;
     setQueryDate(ctx.date);
+    setCtxSeat(ctx.seat);
     setQuerying(true);
     setView('transfer');
     plansRef.current = [];
@@ -213,6 +211,7 @@ export default function App() {
           <TransferList
             groups={groups}
             date={queryDate}
+            seat={ctxSeat}
             prices={prices}
             loadingPrice={loadingPrice}
             onQueryPrice={fetchPrice}

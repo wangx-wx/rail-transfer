@@ -37,8 +37,9 @@ const groups = (plans: TransferPlan[]) => mergePlans(annotatePlans(plans));
 
 /** 价格相关 props 的默认值 */
 const priceProps = {
-  date: '20261007',
-  prices: {} as Record<string, number>,
+  date: '2026-10-07',
+  seat: 'ZE',
+  prices: {} as Record<string, Record<string, number>>,
   loadingPrice: new Set<string>(),
   onQueryPrice: vi.fn(),
 };
@@ -85,7 +86,7 @@ test('TransferList：两程价格都查到时显示合计参考价', () => {
     <TransferList
       groups={groups([plan()])}
       {...priceProps}
-      prices={{ '1|01|05': 300, '2|01|04': 280 }}
+      prices={{ '1|01|05': { ZE: 300 }, '2|01|04': { ZE: 280 } }}
     />,
   );
   expect(screen.getByText('参考价 ¥580')).toBeTruthy();
@@ -93,7 +94,7 @@ test('TransferList：两程价格都查到时显示合计参考价', () => {
 
 test('TransferList：只查到一程时不显示合计', () => {
   render(
-    <TransferList groups={groups([plan()])} {...priceProps} prices={{ '1|01|05': 300 }} />,
+    <TransferList groups={groups([plan()])} {...priceProps} prices={{ '1|01|05': { ZE: 300 } }} />,
   );
   expect(screen.queryByText(/参考价/)).toBeNull();
 });
@@ -107,5 +108,5 @@ test('TransferList：点「查价」触发回调', () => {
   const onQueryPrice = vi.fn();
   render(<TransferList groups={groups([plan()])} {...priceProps} onQueryPrice={onQueryPrice} />);
   screen.getAllByRole('button', { name: '查价' })[0]!.click();
-  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '05', '20261007');
+  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '05', '2026-10-07');
 });

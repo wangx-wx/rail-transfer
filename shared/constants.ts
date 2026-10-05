@@ -94,6 +94,23 @@ export const SEAT_TYPE_CODE: Record<string, string> = {
   WZ: 'O',
 };
 
+/**
+ * queryTicketPrice **响应键** → 界面席别码。
+ *
+ * 实测响应键（G531/G1/G3 一致）：`O` 二等座、`M` 一等座、`A9` 商务座、`WZ` 无座。
+ * 数字码带 `A` 前缀，故 `A9` 而非 `9`。
+ * 一次请求传 `OM9WZ` 即可拿到全部席别价（请求数不变）。
+ */
+export const PRICE_KEY_SEAT: Record<string, string> = {
+  O: 'ZE',
+  M: 'ZY',
+  A9: 'SWZ',
+  WZ: 'WZ',
+};
+
+/** 查价时一次性请求的席别码串（覆盖界面全部可选席别） */
+export const PRICE_SEAT_TYPES = 'OM9WZ';
+
 // ── leftTicket 响应列位映射 ──────────────────────────────
 /**
  * leftTicket/queryG 的 `result[]` 是 58 列 `|` 分隔字符串。

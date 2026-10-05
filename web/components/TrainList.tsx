@@ -8,7 +8,7 @@
 
 import { Button, Card, Empty, Space, Tag, Typography } from 'antd';
 
-import { nameOf, viaTags, seatLabel, priceLabel, priceKey } from '../lib/view.ts';
+import { nameOf, viaTags, seatLabel, seatPrices, priceKey } from '../lib/view.ts';
 import type { SeatState } from '../lib/view.ts';
 import type { Train } from '../../shared/types.ts';
 
@@ -20,8 +20,8 @@ interface Props {
     /** 查询日期（YYYY-MM-DD，查价用） */
     date: string;
   } | null;
-  /** 价格缓存（键 = priceKey） */
-  prices: Record<string, number>;
+  /** 价格缓存（键 = priceKey → 各席别价格表） */
+  prices: Record<string, Record<string, number>>;
   /** 正在查价的键 */
   loadingPrice: Set<string>;
   /** 触发查价 */
@@ -56,7 +56,8 @@ export default function TrainList({ result, prices, loadingPrice, onQueryPrice }
           .filter((x) => x.label);
 
         const key = priceKey(t.trainNo, t.fromStationNo, t.toStationNo);
-        const price = key ? prices[key] : undefined;
+        const priceMap = key ? prices[key] : undefined;
+        const priceItems = seatPrices(priceMap);
 
         return (
           <Card key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} size="small">
@@ -89,10 +90,14 @@ export default function TrainList({ result, prices, loadingPrice, onQueryPrice }
                 )}
               </Space>
 
-              {price != null ? (
-                <Typography.Text strong style={{ color: '#d97706' }}>
-                  {priceLabel(price)}
-                </Typography.Text>
+              {priceItems.length ? (
+                <Space size={10} wrap>
+                  {priceItems.map((p) => (
+                    <Typography.Text key={p.code} strong style={{ color: '#d97706' }}>
+                      {p.name} {p.label}
+                    </Typography.Text>
+                  ))}
+                </Space>
               ) : (
                 <Button
                   size="small"

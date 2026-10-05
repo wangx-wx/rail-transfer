@@ -6,6 +6,7 @@
  * 保持纯函数便于单测（T21）。
  */
 
+import { SEAT_OPTIONS } from '../../shared/constants.ts';
 import type { PlanFlags, PlanGroup } from '../../shared/types.ts';
 
 /** 中转每程的席别编码 → 中文名 */
@@ -103,6 +104,24 @@ export function groupByHub(groups: PlanGroup[]): Array<[hub: string, list: PlanG
 export function priceLabel(price: number | null | undefined): string {
   if (price == null || !Number.isFinite(price)) return '';
   return Number.isInteger(price) ? `¥${price}` : `¥${price.toFixed(1)}`;
+}
+
+/** 席别价格表 → 展示条目（按 SEAT_OPTIONS 顺序，只保留有价的） */
+export interface SeatPriceItem {
+  code: string;
+  name: string;
+  label: string;
+}
+
+export function seatPrices(map: Record<string, number> | undefined): SeatPriceItem[] {
+  if (!map) return [];
+  const items: SeatPriceItem[] = [];
+  for (const opt of SEAT_OPTIONS) {
+    const p = map[opt.code];
+    if (p == null) continue;
+    items.push({ code: opt.code, name: opt.name, label: priceLabel(p) });
+  }
+  return items;
 }
 
 /**

@@ -14,8 +14,9 @@ import {
   waitSeverity,
   groupByHub,
   LEG_SEAT_NAMES,
-  priceLabel,
+  seatPrices,
   priceKey,
+  priceLabel,
 } from '../lib/view.ts';
 import type { FlagKind, SeatState } from '../lib/view.ts';
 import type { PlanGroup, TransferLeg } from '../../shared/types.ts';
@@ -24,8 +25,10 @@ interface Props {
   groups: PlanGroup[];
   /** 查询日期（查价用） */
   date: string;
-  /** 价格缓存（键 = priceKey） */
-  prices: Record<string, number>;
+  /** 用户所选席别（合计参考价按它求和） */
+  seat: string;
+  /** 价格缓存（键 = priceKey → 各席别价格表） */
+  prices: Record<string, Record<string, number>>;
   /** 正在查价的键 */
   loadingPrice: Set<string>;
   /** 触发查价 */
@@ -71,7 +74,8 @@ function Leg({
     .filter((x) => x.label);
 
   const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
-  const price = key ? prices[key] : undefined;
+  const priceMap = key ? prices[key] : undefined;
+  const priceItems = seatPrices(priceMap);
 
   return (
     <Space align="start" size={10} style={{ display: 'flex' }}>
@@ -79,13 +83,15 @@ function Leg({
         {no}
       </Tag>
       <div>
-        <Space size={8}>
+        <Space size={8} wrap>
           <Typography.Text strong>{leg.trainCode}</Typography.Text>
           {via.length > 0 && <Tag>{via.join(' · ')}</Tag>}
-          {price != null ? (
-            <Typography.Text strong style={{ color: '#d97706' }}>
-              {priceLabel(price)}
-            </Typography.Text>
+          {priceItems.length ? (
+            priceItems.map((p) => (
+              <Typography.Text key={p.code} strong style={{ color: '#d97706' }}>
+                {p.name} {p.label}
+              </Typography.Text>
+            ))
           ) : (
             <Button
               size="small"
@@ -125,19 +131,23 @@ function Leg({
 function TransferCard({
   group,
   date,
+  seat,
   prices,
   loadingPrice,
   onQueryPrice,
-}: { group: PlanGroup; date: string } & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
+}: { group: PlanGroup; date: string; seat: string } & Pick<
+  Props,
+  'prices' | 'loadingPrice' | 'onQueryPrice'
+>) {
   const p = group.best;
   const flags = planFlags(p.flags);
   const severity = waitSeverity(p.flags);
   const waitColor = severity === 'warn' ? 'warning' : severity === 'dim' ? 'default' : 'blue';
 
-  // 两程价格都查到后，显示合计参考价
+  // 两程都查到「用户所选席别」价格时，显示合计参考价
   const legPrices = p.legs.map((leg) => {
     const k = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
-    return k ? prices[k] : undefined;
+    return k ? prices[k]?.[seat] : undefined;
   });
   const total = legPrices.every((x) => x != null) ? legPrices.reduce((a, b) => a! + b!, 0) : null;
 
@@ -192,7 +202,7 @@ function TransferCard({
   );
 }
 
-export default function TransferList({ groups, date, prices, loadingPrice, onQueryPrice }: Props) {
+export default function TransferList({ groups, date, seat, prices, loadingPrice, onQueryPrice }: Props) {
   if (!groups.length) return <Empty description="没有中转方案" />;
 
   const items = groupByHub(groups).map(([hub, list]) => ({
@@ -208,6 +218,7 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
         key={`${g.firstTrainCode}-${g.secondTrainCode}-${g.middleStations.map((m) => m.name).join('/')}`}
         group={g}
         date={date}
+        seat={seat}
         prices={prices}
         loadingPrice={loadingPrice}
         onQueryPrice={onQueryPrice}

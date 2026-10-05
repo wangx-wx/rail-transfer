@@ -165,23 +165,28 @@ test('extractHubCodes：从 "码#站名" 抽码并去重', () => {
   expect(extractHubCodes(undefined)).toEqual([]);
 });
 
-// ── parsePrice（按值取，不按键取）────────────────────────
-test('parsePrice：从响应中取带 ¥ 的值', () => {
-  expect(parsePrice({ data: { O: '¥626.0', WZ: '¥626.0', train_no: '240000G53108' } })).toBe(626);
+// ── parsePrice（按值取，键归一到界面席别码）──────────────
+test('parsePrice：把各席别价格归一为界面席别码', () => {
+  expect(parsePrice({ data: { O: '¥626.0', M: '¥1033.0', A9: '¥2315.0', WZ: '¥626.0', train_no: 'x' } })).toEqual({
+    ZE: 626,
+    ZY: 1033,
+    SWZ: 2315,
+    WZ: 626,
+  });
 });
 
-test('parsePrice：忽略非价格值（train_no / 纯数字内部码）', () => {
-  expect(parsePrice({ data: { '2': '6260', train_no: '240000G53108' } })).toBeNull();
+test('parsePrice：忽略非价格值（train_no / 纯数字内部码 / 未知码）', () => {
+  expect(parsePrice({ data: { '2': '6260', train_no: '240000G53108', XX: '¥99' } })).toEqual({});
 });
 
 test('parsePrice：保留一位小数', () => {
-  expect(parsePrice({ data: { A1: '¥177.5' } })).toBe(177.5);
+  expect(parsePrice({ data: { O: '¥177.5' } })).toEqual({ ZE: 177.5 });
 });
 
-test('parsePrice：空响应 / 无 data → null', () => {
-  expect(parsePrice(undefined)).toBeNull();
-  expect(parsePrice({})).toBeNull();
-  expect(parsePrice({ data: {} })).toBeNull();
+test('parsePrice：空响应 / 无 data → 空对象', () => {
+  expect(parsePrice(undefined)).toEqual({});
+  expect(parsePrice({})).toEqual({});
+  expect(parsePrice({ data: {} })).toEqual({});
 });
 
 test('parseTransferLeg：解析站序（票价接口需要）', () => {

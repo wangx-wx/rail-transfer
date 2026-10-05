@@ -30,7 +30,7 @@ function train(over: Partial<Train> = {}): Train {
 
 /** 价格相关 props 的默认值 */
 const priceProps = {
-  prices: {} as Record<string, number>,
+  prices: {} as Record<string, Record<string, number>>,
   loadingPrice: new Set<string>(),
   onQueryPrice: vi.fn(),
 };
@@ -97,15 +97,17 @@ test('TrainList：未查价时显示「查价」按钮', () => {
   expect(screen.getByRole('button', { name: '查价' })).toBeTruthy();
 });
 
-test('TrainList：已查到价格时显示金额', () => {
+test('TrainList：已查到价格时显示各席别金额', () => {
   render(
     <TrainList
       result={{ trains: [train()], stationMap: {}, seat: 'ZE', date: '2026-10-07' }}
       {...priceProps}
-      prices={{ '1|01|02': 626 }}
+      prices={{ '1|01|02': { ZE: 626, ZY: 1033, SWZ: 2315 } }}
     />,
   );
-  expect(screen.getByText('¥626')).toBeTruthy();
+  expect(screen.getByText('二等座 ¥626')).toBeTruthy();
+  expect(screen.getByText('一等座 ¥1033')).toBeTruthy();
+  expect(screen.getByText('商务座 ¥2315')).toBeTruthy();
   expect(screen.queryByRole('button', { name: '查价' })).toBeNull();
 });
 
