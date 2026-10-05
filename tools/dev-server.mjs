@@ -5,7 +5,7 @@
  *
  * 同时承担两件事：
  *   1. 静态托管 web/ 与 shared/（前端零构建，原生 ESM 直接加载）
- *   2. /api/* 直接调用 worker/index.js 的 handleRequest（进程内）
+ *   2. /api/* 直接调用 worker/index.ts 的 handleRequest（进程内）
  *
  * 因为取数层环境无关（全局 fetch + getSetCookie），本地无需 wrangler、
  * 无需安装任何依赖即可跑通完整链路（满足「不安装其他应用」的要求）。
@@ -16,7 +16,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 
-import { handleRequest } from '../worker/index.js';
+import { handleRequest } from '../worker/index.ts';
 
 const PORT = Number(process.argv[2]) || 8765;
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -79,5 +79,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`rail-transfer 开发服务器： http://localhost:${PORT}`);
   console.log(`  静态：web/ 与 shared/（零构建）`);
-  console.log(`  接口：/api/* → worker/index.js（进程内调用）`);
+  console.log(`  接口：/api/* → worker/index.ts（进程内调用）`);
 });

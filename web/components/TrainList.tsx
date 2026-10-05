@@ -32,7 +32,7 @@ export default function TrainList({ result }: Props) {
   if (!trains.length) return <Empty description="没有直达车次" />;
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={10}>
+    <Space orientation="vertical" style={{ width: '100%' }} size={10}>
       {trains.map((t) => {
         const from = nameOf(t.fromStation, stationMap);
         const to = nameOf(t.toStation, stationMap);
