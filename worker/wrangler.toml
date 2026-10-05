@@ -1,16 +1,14 @@
 # Cloudflare Workers 部署配置
 #
-# 部署（需要时）：
-#   npx wrangler deploy worker/index.js --name rail-transfer-proxy
+# 部署：
+#   cd worker && npx wrangler deploy
 #
 # 口令（T15）：用 Worker 环境变量注入，不要写进本文件或代码
 #   npx wrangler secret put ACCESS_TOKEN
 # 未配置 ACCESS_TOKEN 时不校验口令（便于本地开发）。
-#
-# 注意：本仓库默认「不安装依赖」，wrangler 仅在需要部署 Worker 时按需使用。
 
 name = "rail-transfer-proxy"
-main = "index.js"
+main = "index.ts"
 compatibility_date = "2026-10-01"
 
 # 允许的来源（GitHub Pages 域名）。生产环境建议收紧为具体域名。
