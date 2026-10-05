@@ -106,6 +106,22 @@ export function priceLabel(price: number | null | undefined): string {
   return Number.isInteger(price) ? `¥${price}` : `¥${price.toFixed(1)}`;
 }
 
+/**
+ * 分钟数 → 「x时x分」文案。
+ *
+ * 不足 1 小时只显示「x分」（不显示「0时」）；整小时显示「x时」。
+ * 例：258 → `4时18分`；120 → `2时`；2 → `2分`。
+ */
+export function durationLabel(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes) || minutes < 0) return '';
+  const m = Math.round(minutes);
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  if (h === 0) return `${rest}分`;
+  if (rest === 0) return `${h}时`;
+  return `${h}时${rest}分`;
+}
+
 /** 席别价格表 → 展示条目（按 SEAT_OPTIONS 顺序，只保留有价的） */
 export interface SeatPriceItem {
   code: string;

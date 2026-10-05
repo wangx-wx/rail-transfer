@@ -5,7 +5,7 @@
 
 import { test, expect } from 'vitest';
 
-import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub, priceLabel, seatPrices } from './view.ts';
+import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub, priceLabel, seatPrices, durationLabel } from './view.ts';
 import { annotatePlans, mergePlans } from './plans.ts';
 import type { PlanFlags, TransferPlan } from '../../shared/types.ts';
 
@@ -120,4 +120,20 @@ test('seatPrices：按 SEAT_OPTIONS 顺序，只保留有价的', () => {
   ]);
   expect(seatPrices(undefined)).toEqual([]);
   expect(seatPrices({})).toEqual([]);
+});
+
+// ── durationLabel ────────────────────────────────────────
+test('durationLabel：时分 / 整时 / 不足 1 小时', () => {
+  expect(durationLabel(258)).toBe('4时18分');
+  expect(durationLabel(120)).toBe('2时');
+  expect(durationLabel(2)).toBe('2分');
+  expect(durationLabel(59)).toBe('59分');
+  expect(durationLabel(0)).toBe('0分');
+});
+
+test('durationLabel：非法输入 → 空串', () => {
+  expect(durationLabel(null)).toBe('');
+  expect(durationLabel(undefined)).toBe('');
+  expect(durationLabel(NaN)).toBe('');
+  expect(durationLabel(-5)).toBe('');
 });

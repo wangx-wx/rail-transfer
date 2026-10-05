@@ -17,6 +17,7 @@ import {
   seatPrices,
   priceKey,
   priceLabel,
+  durationLabel,
 } from '../lib/view.ts';
 import type { FlagKind, SeatState } from '../lib/view.ts';
 import type { PlanGroup, TransferLeg } from '../../shared/types.ts';
@@ -163,7 +164,7 @@ function TransferCard({
               参考价 {priceLabel(total)}
             </Typography.Text>
           )}
-          <Typography.Text style={{ color: '#2563eb' }}>总耗时 {p.totalMinutes} 分</Typography.Text>
+          <Typography.Text style={{ color: '#2563eb' }}>总耗时 {durationLabel(p.totalMinutes)}</Typography.Text>
         </Space>
       </Space>
 
@@ -180,7 +181,7 @@ function TransferCard({
             />
             {i === 0 && (
               <Space size={6} style={{ margin: '6px 0 6px 30px' }}>
-                <Tag color={waitColor}>换乘 {p.middleStation}　等待 {p.waitMinutes} 分</Tag>
+                <Tag color={waitColor}>换乘 {p.middleStation}　等待 {durationLabel(p.waitMinutes)}</Tag>
                 <Tag>{p.sameStation ? '同站' : '同城异站'}</Tag>
                 {p.sameTrain && <Tag color="success">同车接续</Tag>}
               </Space>

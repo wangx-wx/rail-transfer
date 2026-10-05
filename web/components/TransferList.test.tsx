@@ -54,7 +54,7 @@ test('TransferList：按枢纽分组并展示起终点与总耗时', () => {
   // 枢纽名同时出现在折叠标题与换乘行，故用 getAllByText
   expect(screen.getAllByText(/南京南/).length).toBeGreaterThan(0);
   expect(screen.getByText('北京南 → 上海虹桥')).toBeTruthy();
-  expect(screen.getByText('总耗时 360 分')).toBeTruthy();
+  expect(screen.getByText('总耗时 6时')).toBeTruthy();
 });
 
 test('TransferList：展示两程车次与换乘等待', () => {
