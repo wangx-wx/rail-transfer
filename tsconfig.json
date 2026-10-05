@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
+    "jsx": "react-jsx",
 
     /* 严格模式：12306 字段无文档，靠类型约束减少踩坑 */
     "strict": true,
@@ -26,6 +27,6 @@
       "@shared/*": ["./shared/*"]
     }
   },
-  "include": ["web/**/*.ts", "worker/**/*.ts", "shared/**/*.ts", "*.ts"],
+  "include": ["web/**/*.ts", "web/**/*.tsx", "worker/**/*.ts", "shared/**/*.ts", "*.ts"],
   "exclude": ["node_modules", "dist", "docs", "spike", "tools"]
 }

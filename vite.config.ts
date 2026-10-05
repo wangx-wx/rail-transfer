@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -9,6 +10,9 @@ import { fileURLToPath } from 'node:url';
  */
 export default defineConfig({
   base: '/rail-transfer/',
+
+  // React 19 的 JSX 转换 + dev 时的 Fast Refresh
+  plugins: [react()],
 
   resolve: {
     alias: {
