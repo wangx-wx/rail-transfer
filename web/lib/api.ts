@@ -8,6 +8,7 @@
 import type {
   FetchResult,
   LeftTicketData,
+  PriceData,
   SegmentItem,
   TransferData,
   UpstreamEnvelope,
@@ -99,7 +100,7 @@ export interface PriceQuery {
 }
 
 /** 票价 */
-export function price(p: PriceQuery, opts?: ApiOpts): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
+export function price(p: PriceQuery, opts?: ApiOpts): Promise<FetchResult<UpstreamEnvelope<PriceData>>> {
   return get(
     '/api/price',
     {

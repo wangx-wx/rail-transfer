@@ -94,3 +94,13 @@ export function groupByHub(groups: PlanGroup[]): Array<[hub: string, list: PlanG
   }
   return [...byHub.entries()];
 }
+
+/**
+ * 价格 → 展示文案。
+ *
+ * 整数不带小数（`¥626`），非整数保留一位（`¥177.5`）。未查到返回空串。
+ */
+export function priceLabel(price: number | null | undefined): string {
+  if (price == null || !Number.isFinite(price)) return '';
+  return Number.isInteger(price) ? `¥${price}` : `¥${price.toFixed(1)}`;
+}

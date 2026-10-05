@@ -54,6 +54,8 @@ export interface Train {
   secretStr: string;
   /** 各席别余票 */
   seats: SeatAvailability[];
+  /** 已查询到的价格（元）；未查为 undefined */
+  price?: number;
 }
 
 /** 中转方案的一程（已解析的 fullList 项） */
@@ -71,8 +73,14 @@ export interface TransferLeg {
   startTime: string;
   arriveTime: string;
   duration: string;
+  /** 出发站序（票价接口用） */
+  fromStationNo?: string;
+  /** 到达站序（票价接口用） */
+  toStationNo?: string;
   /** 该程各席别余票原始值（键为席别编码） */
   seats: Record<string, string>;
+  /** 已查询到的价格（元）；未查为 undefined */
+  price?: number;
 }
 
 /** 一个中转方案（已解析的 middleList 项） */
@@ -156,6 +164,19 @@ export interface TransferData {
   middleStationList?: string[];
 }
 
+/**
+ * queryTicketPrice 响应的 data。
+ *
+ * 键是席别码、值是 `"¥626.0"` 形式的价格串；另有 `train_no` 与 `OT`（非价格）。
+ * 席别码无权威文档，故解析时**按值取**（带 `¥` 前缀的才是价格），不按键取。
+ * 实测 seat_types 传单码即可：`O`=二等座、`M`=一等座、`9`=商务座（返回键带 `A` 前缀）。
+ */
+export interface PriceData {
+  train_no?: string;
+  OT?: unknown;
+  [seatCode: string]: unknown;
+}
+
 /** lcquery 的 middleList 原始项（只标注用到的字段） */
 export interface RawMiddleItem {
   from_station_name: string;
@@ -186,6 +207,12 @@ export interface RawFullListItem {
   start_time: string;
   arrive_time: string;
   lishi: string;
+  /** 出发站序（实测存在，票价接口用） */
+  from_station_no?: string;
+  /** 到达站序（实测存在，票价接口用） */
+  to_station_no?: string;
+  /** 席别码串（如 "POMO"） */
+  seat_types?: string;
   ze_num?: string;
   zy_num?: string;
   swz_num?: string;

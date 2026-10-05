@@ -13,6 +13,7 @@ import {
   parseTransfer,
   parseTransferItem,
   extractHubCodes,
+  parsePrice,
 } from './parse.ts';
 import type {
   LeftTicketData,
@@ -162,4 +163,32 @@ test('extractHubCodes：从 "码#站名" 抽码并去重', () => {
   expect(extractHubCodes(['BME#白马北', 'CNW#成都南', 'BME#白马北'])).toEqual(['BME', 'CNW']);
   expect(extractHubCodes([])).toEqual([]);
   expect(extractHubCodes(undefined)).toEqual([]);
+});
+
+// ── parsePrice（按值取，不按键取）────────────────────────
+test('parsePrice：从响应中取带 ¥ 的值', () => {
+  expect(parsePrice({ data: { O: '¥626.0', WZ: '¥626.0', train_no: '240000G53108' } })).toBe(626);
+});
+
+test('parsePrice：忽略非价格值（train_no / 纯数字内部码）', () => {
+  expect(parsePrice({ data: { '2': '6260', train_no: '240000G53108' } })).toBeNull();
+});
+
+test('parsePrice：保留一位小数', () => {
+  expect(parsePrice({ data: { A1: '¥177.5' } })).toBe(177.5);
+});
+
+test('parsePrice：空响应 / 无 data → null', () => {
+  expect(parsePrice(undefined)).toBeNull();
+  expect(parsePrice({})).toBeNull();
+  expect(parsePrice({ data: {} })).toBeNull();
+});
+
+test('parseTransferLeg：解析站序（票价接口需要）', () => {
+  const raw = transferFixture();
+  const item = raw.data!.middleList![0]!;
+  const plan = parseTransferItem(item);
+  const leg = plan.legs[0]!;
+  expect(leg.fromStationNo).toBeDefined();
+  expect(leg.toStationNo).toBeDefined();
 });

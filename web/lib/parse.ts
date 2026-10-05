@@ -8,6 +8,7 @@
 import { COL, SEAT_COLUMNS, NO_TICKET } from '../../shared/constants.ts';
 import type {
   LeftTicketData,
+  PriceData,
   RawFullListItem,
   RawMiddleItem,
   Train,
@@ -81,6 +82,8 @@ export function parseTransferLeg(leg: RawFullListItem): TransferLeg {
     startTime: leg.start_time,
     arriveTime: leg.arrive_time,
     duration: leg.lishi,
+    fromStationNo: leg.from_station_no,
+    toStationNo: leg.to_station_no,
     seats: {
       ZE: leg.ze_num ?? '',
       ZY: leg.zy_num ?? '',
@@ -147,4 +150,23 @@ export function extractHubCodes(middleStationList: string[] | undefined): string
     .map((s) => String(s).split('#')[0]?.trim() ?? '')
     .filter(Boolean);
   return [...new Set(codes)];
+}
+
+/**
+ * 解析 queryTicketPrice 响应，取出价格（元）。
+ *
+ * 响应形如 `{"O":"¥626.0","WZ":"¥626.0","train_no":"...","OT":[]}`。
+ * **按值取**：只认带 `¥` 前缀的字符串，取第一个（一次只查一个席别，故唯一）。
+ * 无价格（席别不存在 / 该席别无票）时返回 null。
+ */
+export function parsePrice(raw: UpstreamEnvelope<PriceData> | undefined): number | null {
+  const data = raw?.data;
+  if (!data) return null;
+  for (const v of Object.values(data)) {
+    if (typeof v === 'string' && v.startsWith('¥')) {
+      const n = Number.parseFloat(v.slice(1));
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
 }

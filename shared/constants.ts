@@ -79,6 +79,21 @@ export const SEAT_OPTIONS = [
   { code: 'WZ', name: '无座' },
 ];
 
+/**
+ * 界面席别码 → queryTicketPrice 的 `seat_types` 参数码。
+ *
+ * 实测（G531/G1/G3 三趟交叉验证）：
+ *   `O` → 二等座、`M` → 一等座、`9` → 商务座。
+ * 无座按二等座收费，故 `WZ` 用二等座码（实测无座价恒等于二等座价）。
+ * 数字码返回的键带 `A` 前缀（`9`→`A9`、`2`→`A2`），故解析时按值取而非按键取。
+ */
+export const SEAT_TYPE_CODE: Record<string, string> = {
+  ZE: 'O',
+  ZY: 'M',
+  SWZ: '9',
+  WZ: 'O',
+};
+
 // ── leftTicket 响应列位映射 ──────────────────────────────
 /**
  * leftTicket/queryG 的 `result[]` 是 58 列 `|` 分隔字符串。

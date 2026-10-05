@@ -5,7 +5,7 @@
 
 import { test, expect } from 'vitest';
 
-import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub } from './view.ts';
+import { nameOf, viaTags, seatLabel, planFlags, waitSeverity, groupByHub, priceLabel } from './view.ts';
 import { annotatePlans, mergePlans } from './plans.ts';
 import type { PlanFlags, TransferPlan } from '../../shared/types.ts';
 
@@ -99,4 +99,16 @@ test('groupByHub：按换乘枢纽分组', () => {
 
 test('groupByHub：空输入 → 空数组', () => {
   expect(groupByHub([])).toEqual([]);
+});
+
+// ── priceLabel ───────────────────────────────────────────
+test('priceLabel：整数不带小数，非整数保留一位', () => {
+  expect(priceLabel(626)).toBe('¥626');
+  expect(priceLabel(177.5)).toBe('¥177.5');
+});
+
+test('priceLabel：未查到 → 空串', () => {
+  expect(priceLabel(null)).toBe('');
+  expect(priceLabel(undefined)).toBe('');
+  expect(priceLabel(NaN)).toBe('');
 });
