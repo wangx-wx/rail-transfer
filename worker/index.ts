@@ -138,10 +138,13 @@ export async function handleRequest(
 
   const res = json(body, body.ok === false ? 502 : 200);
 
-  // 只缓存成功响应
+  // 只缓存成功响应。
+  // ⚠️ 必须用 clone() 分流：`new Response(res.body, res)` 会让两个 Response 共享
+  // 同一个 body 流，cache.put 读空后返回的 res 就无 body 可用，抛
+  // `TypeError: Body has already been used`（仅在注入了 cache 的环境复现）。
   if (cache && body.ok !== false) {
     try {
-      const toCache = new Response(res.body, res);
+      const toCache = res.clone();
       toCache.headers.set('Cache-Control', `public, max-age=${CACHE_TTL}`);
       await cache.put(cacheKey, toCache);
     } catch {

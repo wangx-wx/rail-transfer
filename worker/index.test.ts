@@ -55,6 +55,10 @@ function fakeCache(seed: Record<string, Response> = {}): Cache & { store: Map<st
       return store.get(req.url) ?? null;
     },
     async put(req: Request, res: Response) {
+      // ⚠️ 真 cache.put 会**消费**响应 body 流。若这里只是存引用，
+      // 就测不出「返回的响应与缓存响应共享 body 流」这类 bug（见下方回归测试）。
+      // 故此处读空 body 再存，忠实模拟真实行为。
+      await res.arrayBuffer();
       store.set(req.url, res);
     },
   } as unknown as Cache & { store: Map<string, Response> };
@@ -130,6 +134,21 @@ test('缓存未命中 → 转发并写入，带显式 Cache-Control', async () =
   expect(f.calls).toHaveLength(1);
   const stored = [...cache.store.values()][0]!;
   expect(stored.headers.get('Cache-Control')).toMatch(/max-age=300/);
+});
+
+// 回归：写缓存曾让返回响应与缓存响应共享 body 流，读空后返回时抛
+// `TypeError: Body has already been used`（只在注入 cache 的环境复现，线上 1101）。
+test('缓存写入后，返回的响应仍可读取 body', async () => {
+  const cache = fakeCache();
+  const res = await handleRequest(
+    req('/api/transfer?from=VNP&to=AOH&date=2026-10-07&hubs=NKH'),
+    {},
+    { fetchImpl: okFetch(), cache },
+  );
+  expect(res.status).toBe(200);
+  // 关键：cache.put 之后仍能读出 body，且内容完整
+  const body = (await res.json()) as { ok: boolean };
+  expect(body.ok).toBe(true);
 });
 
 test('缓存命中 → 不再转发', async () => {
