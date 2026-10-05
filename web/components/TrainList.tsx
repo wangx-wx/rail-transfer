@@ -3,11 +3,12 @@
  *
  * 展示：车次、上车→下车、发到时刻、历时、席别余票；
  * 始发/终到与上下车不同时用 Tag 标注（见 spec/技术方案.md §5.1）。
+ * 价格懒加载：点「查价」才请求（1 趟车 1 次请求，避开子请求上限）。
  */
 
-import { Card, Empty, Space, Tag, Typography } from 'antd';
+import { Button, Card, Empty, Space, Tag, Typography } from 'antd';
 
-import { nameOf, viaTags, seatLabel } from '../lib/view.ts';
+import { nameOf, viaTags, seatLabel, priceLabel, priceKey } from '../lib/view.ts';
 import type { SeatState } from '../lib/view.ts';
 import type { Train } from '../../shared/types.ts';
 
@@ -17,6 +18,17 @@ interface Props {
     stationMap: Record<string, string>;
     seat: string;
   } | null;
+  /** 价格缓存（键 = priceKey） */
+  prices: Record<string, number>;
+  /** 正在查价的键 */
+  loadingPrice: Set<string>;
+  /** 触发查价 */
+  onQueryPrice: (
+    trainNo: string,
+    fromStationNo: string | undefined,
+    toStationNo: string | undefined,
+    date: string,
+  ) => void;
 }
 
 /** 席别状态 → antd Tag color */
@@ -26,7 +38,7 @@ const SEAT_COLOR: Record<SeatState, string> = {
   hl: 'green',
 };
 
-export default function TrainList({ result }: Props) {
+export default function TrainList({ result, prices, loadingPrice, onQueryPrice }: Props) {
   if (!result) return null;
   const { trains, stationMap, seat } = result;
   if (!trains.length) return <Empty description="没有直达车次" />;
@@ -40,6 +52,9 @@ export default function TrainList({ result }: Props) {
         const seats = t.seats
           .map((s) => ({ label: seatLabel(s.name, s.raw, s.code === seat), key: s.code }))
           .filter((x) => x.label);
+
+        const key = priceKey(t.trainNo, t.fromStationNo, t.toStationNo);
+        const price = key ? prices[key] : undefined;
 
         return (
           <Card key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} size="small">
@@ -71,6 +86,22 @@ export default function TrainList({ result }: Props) {
                   <Tag>无票</Tag>
                 )}
               </Space>
+
+              {price != null ? (
+                <Typography.Text strong style={{ color: '#d97706' }}>
+                  {priceLabel(price)}
+                </Typography.Text>
+              ) : (
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!key}
+                  loading={key ? loadingPrice.has(key) : false}
+                  onClick={() => key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, t.trainDate)}
+                >
+                  查价
+                </Button>
+              )}
             </Space>
           </Card>
         );

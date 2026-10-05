@@ -5,14 +5,16 @@
  * 点哪个按钮显示哪种结果。
  */
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Layout, Typography } from 'antd';
 
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
 import { runQuery } from './lib/orchestrate.ts';
-import { parseLeftTicket, parseTransfer } from './lib/parse.ts';
+import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
 import { processPlans } from './lib/plans.ts';
+import { priceKey } from './lib/view.ts';
+import { SEAT_TYPE_CODE } from '../shared/constants.ts';
 import type { QueryContext } from './components/QueryForm.tsx';
 import QueryForm from './components/QueryForm.tsx';
 import StatusBar from './components/StatusBar.tsx';
@@ -44,13 +46,61 @@ export default function App() {
   // 流式累积的中转方案（避免每段拷贝大数组进 state）
   const plansRef = useRef<TransferPlan[]>([]);
 
+  // 价格缓存（键 = priceKey），直达与中转每程共用
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  // 正在查价的车次键，用于按钮 loading 态
+  const [loadingPrice, setLoadingPrice] = useState<Set<string>>(new Set());
+  // 查价用的查询上下文（口令 / 席别），查价时复用
+  const ctxRef = useRef<QueryContext | null>(null);
+  // 当前查询日期（传给列表用于查价）
+  const [queryDate, setQueryDate] = useState('');
+
+  /**
+   * 查一段行程的价格（1 次请求）。已在缓存或查过则跳过。
+   * 直达车次与中转每程共用。
+   */
+  const fetchPrice = useCallback(
+    async (trainNo: string, fromStationNo: string | undefined, toStationNo: string | undefined, date: string) => {
+      const ctx = ctxRef.current;
+      const key = priceKey(trainNo, fromStationNo, toStationNo);
+      if (!ctx || !key || !fromStationNo || !toStationNo) return;
+      if (key in prices || loadingPrice.has(key)) return;
+
+      setLoadingPrice((prev) => new Set(prev).add(key));
+      try {
+        const r = await api.price(
+          {
+            trainNo,
+            fromStationNo,
+            toStationNo,
+            seatTypes: SEAT_TYPE_CODE[ctx.seat] ?? 'O',
+            date,
+          },
+          { token: ctx.token, base: API_BASE },
+        );
+        const price = r.ok ? parsePrice(r.data) : null;
+        if (price != null) setPrices((prev) => ({ ...prev, [key]: price }));
+      } finally {
+        setLoadingPrice((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [prices, loadingPrice],
+  );
+
   /** 查直达 */
   async function onDirect(ctx: QueryContext): Promise<void> {
     if (runningRef.current) return;
     runningRef.current = true;
+    ctxRef.current = ctx;
+    setQueryDate(ctx.date);
     setQuerying(true);
     setView('direct');
     setDirect(null);
+    setPrices({});
     setStatus({ text: '正在查询直达…', kind: 'info' });
 
     try {
@@ -78,10 +128,13 @@ export default function App() {
   async function onTransfer(ctx: QueryContext): Promise<void> {
     if (runningRef.current) return;
     runningRef.current = true;
+    ctxRef.current = ctx;
+    setQueryDate(ctx.date);
     setQuerying(true);
     setView('transfer');
     plansRef.current = [];
     setGroups([]);
+    setPrices({});
     setStatus({ text: '正在查询官方基线…', kind: 'info' });
 
     /** 把累积的方案重新分组排序后写进 state（传新数组引用） */
@@ -119,7 +172,14 @@ export default function App() {
               kind: failed ? 'warn' : 'info',
             });
           },
-          onDone: () => setStatus({ text: `完成：中转 ${plansRef.current.length} 条方案`, kind: 'info' }),
+          onDone: () => {
+            setStatus({ text: `完成：中转 ${plansRef.current.length} 条方案`, kind: 'info' });
+            // 自动查最优一条的两程价格（D21）
+            const best = processPlans(plansRef.current)[0]?.best;
+            for (const leg of best?.legs ?? []) {
+              void fetchPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, ctx.date);
+            }
+          },
         },
       );
     } catch (e) {
@@ -144,8 +204,18 @@ export default function App() {
       <Layout.Content style={{ maxWidth: 980, width: '100%', margin: '0 auto', padding: 18 }}>
         <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} />
         <StatusBar text={status.text} kind={status.kind} />
-        {view === 'direct' && <TrainList result={direct} />}
-        {view === 'transfer' && <TransferList groups={groups} />}
+        {view === 'direct' && (
+          <TrainList result={direct} prices={prices} loadingPrice={loadingPrice} onQueryPrice={fetchPrice} />
+        )}
+        {view === 'transfer' && (
+          <TransferList
+            groups={groups}
+            date={queryDate}
+            prices={prices}
+            loadingPrice={loadingPrice}
+            onQueryPrice={fetchPrice}
+          />
+        )}
       </Layout.Content>
     </Layout>
   );

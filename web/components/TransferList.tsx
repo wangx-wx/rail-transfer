@@ -5,14 +5,36 @@
  * 分组逻辑来自 view.groupByHub（纯函数，已单测）。
  */
 
-import { Card, Collapse, Empty, Space, Tag, Typography } from 'antd';
+import { Button, Card, Collapse, Empty, Space, Tag, Typography } from 'antd';
 
-import { viaTags, seatLabel, planFlags, waitSeverity, groupByHub, LEG_SEAT_NAMES } from '../lib/view.ts';
+import {
+  viaTags,
+  seatLabel,
+  planFlags,
+  waitSeverity,
+  groupByHub,
+  LEG_SEAT_NAMES,
+  priceLabel,
+  priceKey,
+} from '../lib/view.ts';
 import type { FlagKind, SeatState } from '../lib/view.ts';
 import type { PlanGroup, TransferLeg } from '../../shared/types.ts';
 
 interface Props {
   groups: PlanGroup[];
+  /** 查询日期（查价用） */
+  date: string;
+  /** 价格缓存（键 = priceKey） */
+  prices: Record<string, number>;
+  /** 正在查价的键 */
+  loadingPrice: Set<string>;
+  /** 触发查价 */
+  onQueryPrice: (
+    trainNo: string,
+    fromStationNo: string | undefined,
+    toStationNo: string | undefined,
+    date: string,
+  ) => void;
 }
 
 /** 方案标记类别 → antd Tag color */
@@ -31,11 +53,25 @@ const SEAT_COLOR: Record<SeatState, string> = {
 };
 
 /** 一程（中转的一段） */
-function Leg({ leg, no }: { leg: TransferLeg; no: number }) {
+function Leg({
+  leg,
+  no,
+  date,
+  prices,
+  loadingPrice,
+  onQueryPrice,
+}: {
+  leg: TransferLeg;
+  no: number;
+  date: string;
+} & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
   const via = viaTags(leg.startStation, leg.endStation, leg.fromStation, leg.toStation);
   const seats = Object.entries(leg.seats)
     .map(([code, raw]) => ({ label: seatLabel(LEG_SEAT_NAMES[code] ?? code, raw), key: code }))
     .filter((x) => x.label);
+
+  const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
+  const price = key ? prices[key] : undefined;
 
   return (
     <Space align="start" size={10} style={{ display: 'flex' }}>
@@ -46,6 +82,21 @@ function Leg({ leg, no }: { leg: TransferLeg; no: number }) {
         <Space size={8}>
           <Typography.Text strong>{leg.trainCode}</Typography.Text>
           {via.length > 0 && <Tag>{via.join(' · ')}</Tag>}
+          {price != null ? (
+            <Typography.Text strong style={{ color: '#d97706' }}>
+              {priceLabel(price)}
+            </Typography.Text>
+          ) : (
+            <Button
+              size="small"
+              type="link"
+              disabled={!key}
+              loading={key ? loadingPrice.has(key) : false}
+              onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date)}
+            >
+              查价
+            </Button>
+          )}
         </Space>
         <div>
           <Space size={8}>
@@ -71,11 +122,24 @@ function Leg({ leg, no }: { leg: TransferLeg; no: number }) {
 }
 
 /** 单个中转方案卡片 */
-function TransferCard({ group }: { group: PlanGroup }) {
+function TransferCard({
+  group,
+  date,
+  prices,
+  loadingPrice,
+  onQueryPrice,
+}: { group: PlanGroup; date: string } & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
   const p = group.best;
   const flags = planFlags(p.flags);
   const severity = waitSeverity(p.flags);
   const waitColor = severity === 'warn' ? 'warning' : severity === 'dim' ? 'default' : 'blue';
+
+  // 两程价格都查到后，显示合计参考价
+  const legPrices = p.legs.map((leg) => {
+    const k = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
+    return k ? prices[k] : undefined;
+  });
+  const total = legPrices.every((x) => x != null) ? legPrices.reduce((a, b) => a! + b!, 0) : null;
 
   return (
     <Card size="small" style={{ marginBottom: 10 }}>
@@ -83,13 +147,27 @@ function TransferCard({ group }: { group: PlanGroup }) {
         <Typography.Text strong>
           {p.fromStation} → {p.endStation}
         </Typography.Text>
-        <Typography.Text style={{ color: '#2563eb' }}>总耗时 {p.totalMinutes} 分</Typography.Text>
+        <Space size={12}>
+          {total != null && (
+            <Typography.Text strong style={{ color: '#d97706' }}>
+              参考价 {priceLabel(total)}
+            </Typography.Text>
+          )}
+          <Typography.Text style={{ color: '#2563eb' }}>总耗时 {p.totalMinutes} 分</Typography.Text>
+        </Space>
       </Space>
 
       <div style={{ marginTop: 8 }}>
         {p.legs.map((leg, i) => (
           <div key={`${leg.trainCode}-${i}`}>
-            <Leg leg={leg} no={i + 1} />
+            <Leg
+              leg={leg}
+              no={i + 1}
+              date={date}
+              prices={prices}
+              loadingPrice={loadingPrice}
+              onQueryPrice={onQueryPrice}
+            />
             {i === 0 && (
               <Space size={6} style={{ margin: '6px 0 6px 30px' }}>
                 <Tag color={waitColor}>换乘 {p.middleStation}　等待 {p.waitMinutes} 分</Tag>
@@ -114,7 +192,7 @@ function TransferCard({ group }: { group: PlanGroup }) {
   );
 }
 
-export default function TransferList({ groups }: Props) {
+export default function TransferList({ groups, date, prices, loadingPrice, onQueryPrice }: Props) {
   if (!groups.length) return <Empty description="没有中转方案" />;
 
   const items = groupByHub(groups).map(([hub, list]) => ({
@@ -126,7 +204,14 @@ export default function TransferList({ groups }: Props) {
       </Space>
     ),
     children: list.map((g) => (
-      <TransferCard key={`${g.firstTrainCode}-${g.secondTrainCode}-${g.middleStations.map((m) => m.name).join('/')}`} group={g} />
+      <TransferCard
+        key={`${g.firstTrainCode}-${g.secondTrainCode}-${g.middleStations.map((m) => m.name).join('/')}`}
+        group={g}
+        date={date}
+        prices={prices}
+        loadingPrice={loadingPrice}
+        onQueryPrice={onQueryPrice}
+      />
     )),
   }));
 

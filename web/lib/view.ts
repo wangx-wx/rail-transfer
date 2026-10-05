@@ -104,3 +104,18 @@ export function priceLabel(price: number | null | undefined): string {
   if (price == null || !Number.isFinite(price)) return '';
   return Number.isInteger(price) ? `¥${price}` : `¥${price.toFixed(1)}`;
 }
+
+/**
+ * 价格缓存的键。
+ *
+ * 直达车次与中转每程共用一套（都是「车次 + 起终站序」唯一确定一段行程）。
+ * 站序缺失时返回 null（无法查价）。
+ */
+export function priceKey(
+  trainNo: string,
+  fromStationNo: string | undefined,
+  toStationNo: string | undefined,
+): string | null {
+  if (!trainNo || !fromStationNo || !toStationNo) return null;
+  return `${trainNo}|${fromStationNo}|${toStationNo}`;
+}
