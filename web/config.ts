@@ -1,12 +1,13 @@
 /**
  * 运行时配置
  *
- * API_BASE 为空 = 同源（本地开发用，由 tools/dev-server.mjs 提供 /api）。
- *
- * 部署到 GitHub Pages 后，静态页没有 /api，需把这里改成你的 Worker 地址，例如：
- *   export const API_BASE = 'https://rail-transfer-proxy.<你的子域>.workers.dev';
+ * 用 Vite 的环境常量区分（无需手改）：
+ *   - 开发（`npm run dev`）：空串 = 同源，走 Vite proxy → 本地 Worker。
+ *   - 构建（`npm run build`）：指向线上 Worker（GitHub Pages 静态页没有 /api）。
  *
  * ⚠️ 只填地址，不要在此写口令（T16：口令由界面输入，随请求头发送）。
  */
 
-export const API_BASE = '';
+const WORKER_URL = 'https://rail-transfer-proxy.wangx-coding.workers.dev';
+
+export const API_BASE = import.meta.env.PROD ? WORKER_URL : '';
