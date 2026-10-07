@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="12306 查票助手">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e3a8a" />
+      <stop offset="1" stop-color="#2563eb" />
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角底板（与页面 Header 同款渐变） -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)" />
+
+  <!-- 车头：朝右的流线型高铁剪影，鼻端收短以保小尺寸清晰度 -->
+  <path
+    d="M10 44 L10 30 Q10 22 18 21 L31 19.5 Q44 18 52 30 L55.5 36.5 Q57 39.5 57 42.5 L57 44 Z"
+    fill="#ffffff"
+  />
+
+  <!-- 车窗（底板色挖出） -->
+  <rect x="15" y="27.5" width="7.5" height="7" rx="1.8" fill="#2563eb" />
+  <rect x="26" y="26.5" width="7.5" height="7" rx="1.8" fill="#2563eb" />
+  <rect x="37" y="26.5" width="6.5" height="6.5" rx="1.8" fill="#2563eb" />
+
+  <!-- 轨道 -->
+  <rect x="9" y="49" width="46" height="3.4" rx="1.7" fill="#ffffff" opacity="0.6" />
+</svg>
