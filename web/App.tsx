@@ -239,9 +239,9 @@ export default function App() {
     <Layout style={{ minHeight: '100vh' }}>
       <Layout.Header style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)' }}>
         <Typography.Title level={4} style={{ color: '#fff', margin: 0, lineHeight: '64px' }}>
-          12306 中转换乘查询{' '}
+          12306 查票助手{' '}
           <Typography.Text style={{ color: 'rgba(255,255,255,.8)', fontSize: 13, fontWeight: 400 }}>
-            比官方网页给出更多中转方案
+            比官方网页给出更多选择方案
           </Typography.Text>
         </Typography.Title>
       </Layout.Header>
