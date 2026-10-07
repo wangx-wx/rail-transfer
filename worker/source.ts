@@ -164,7 +164,7 @@ export interface TransferParams extends SourceDeps {
 /**
  * 查询单个枢纽的中转方案。
  *
- * ⚠️ 中转接口**不做城市展开**（产品方案 5.2），必须对城市内每个站各查一次。
+ * 城市覆盖（D19/T35，已实测确认）：传城市代表站码即可，上游会覆盖同城其他车站，无需逐站查询。
  * ⚠️ `middle_station` 传空 = 官方默认 Top-N；传枢纽码 = 强制枚举该枢纽（核心价值）。
  */
 export async function fetchTransfer({

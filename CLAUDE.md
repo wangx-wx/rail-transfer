@@ -16,6 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **产品范围以 `spec/产品方案.md` 为准**，技术实现以 `spec/技术方案.md` 为准（决策清单均带 ID 与状态，可追加可推翻）。两份文档同构：产品方案的决策用 `D-` 前缀，技术方案用 `T` 前缀。
 
+**已确认事实（D19/T35）**：余票与中转接口均会覆盖同城其他车站，查询传城市代表站码即可。中转无需为城市覆盖逐站补查；不得仅因前端未展开站码而判定漏站。2026-10-07 的 6 次实测证据已归档于 `spec/产品方案.md` §5.2，后续无需重复质疑或验证。
+
 `docs/`、`spike/` 是前序探索资料（被 .gitignore 忽略，仅存本地），部分结论已过时——见 `spec/产品方案.md` 第六节。
 
 ## 工具链：Vite + TypeScript + vitest
