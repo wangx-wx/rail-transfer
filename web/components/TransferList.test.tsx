@@ -35,6 +35,10 @@ function plan(over: Partial<TransferPlan> = {}): TransferPlan {
 
 const groups = (plans: TransferPlan[]) => mergePlans(annotatePlans(plans));
 
+function expandDetails(): void {
+  screen.getAllByText('两程详情').forEach((summary) => fireEvent.click(summary));
+}
+
 /** 价格相关 props 的默认值 */
 const priceProps = {
   date: '2026-10-07',
@@ -81,6 +85,7 @@ test('TransferList：同车次在不同枢纽展示对应行程、余票、风�
   expect(screen.getByText('总耗时 6时20分')).toBeTruthy();
   expect(screen.getByText('二等座 2 张')).toBeTruthy();
   expect(screen.getAllByText('低于换乘下限')).toHaveLength(1);
+  expandDetails();
   const buttons = screen.getAllByRole('button', { name: '查价' });
   buttons.forEach((button) => fireEvent.click(button));
   expect(onQueryPrice.mock.calls).toEqual([
@@ -161,12 +166,29 @@ test('TransferList：流式新增枢纽自动展开', async () => {
 
 test('TransferList：未查价的程显示「查价」按钮', () => {
   render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  expandDetails();
   expect(screen.getAllByRole('button', { name: '查价' })).toHaveLength(2);
 });
 
 test('TransferList：点「查价」触发回调', () => {
   const onQueryPrice = vi.fn();
   render(<TransferList groups={groups([plan()])} {...priceProps} onQueryPrice={onQueryPrice} />);
+  expandDetails();
   screen.getAllByRole('button', { name: '查价' })[0]!.click();
   expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '05', '2026-10-07', 'POMO');
+});
+
+test('TransferList：折叠详情时保留车次、等待风险和两程余票，不自动查价', () => {
+  const onQueryPrice = vi.fn();
+  const { container } = render(<TransferList groups={groups([plan({ waitMinutes: 10 })])} {...priceProps} onQueryPrice={onQueryPrice} />);
+  expect(screen.getByText('G1 → G2')).toBeTruthy();
+  expect(screen.getByText('低于换乘下限')).toBeTruthy();
+  expect(screen.getByText('第1程 二等座 有')).toBeTruthy();
+  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
+  expect(container.querySelector('details')?.open).toBe(false);
+  // jsdom 不计算 details 的原生可见性；闭合状态断言 open，隐藏效果另用浏览器验证。
+  expandDetails();
+  expect(container.querySelector('details')?.open).toBe(true);
+  expect(screen.getAllByRole('button', { name: '查价' })).toHaveLength(2);
+  expect(onQueryPrice).not.toHaveBeenCalled();
 });

@@ -6,7 +6,6 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Layout, Typography } from 'antd';
 
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
@@ -243,18 +242,15 @@ export default function App() {
   }
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Header style={{ background: 'linear-gradient(135deg, #1e3a8a, #2563eb)' }}>
-        <Typography.Title level={4} style={{ color: '#fff', margin: 0, lineHeight: '64px' }}>
-          12306 查票助手{' '}
-          <Typography.Text style={{ color: 'rgba(255,255,255,.8)', fontSize: 13, fontWeight: 400 }}>
-            比官方网页给出更多选择方案
-          </Typography.Text>
-        </Typography.Title>
-      </Layout.Header>
+    <div className="app-shell">
+      <header className="app-header">
+        <h1>12306 查票助手</h1>
+        <p>比官方网页给出更多选择方案</p>
+      </header>
 
-      <Layout.Content style={{ maxWidth: 980, width: '100%', margin: '0 auto', padding: 18 }}>
+      <main>
         <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} />
+        {view !== 'idle' && <h2 className="results-title">{view === 'direct' ? '直达车次' : '中转方案'}</h2>}
         <StatusBar text={status.text} kind={status.kind} />
         {view === 'direct' && (
           <TrainList
@@ -277,7 +273,7 @@ export default function App() {
             onQueryPrice={fetchPrice}
           />
         )}
-      </Layout.Content>
-    </Layout>
+      </main>
+    </div>
   );
 }

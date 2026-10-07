@@ -55,3 +55,26 @@ test('QueryForm：querying 时两个按钮进入 loading 态', () => {
   expect(direct.className).toContain('ant-btn-loading');
   expect(transfer.className).toContain('ant-btn-loading');
 });
+
+test('QueryForm：折叠口令保留输入，对调后提交正确的城市与口令', async () => {
+  const onTransfer = vi.fn();
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} />);
+  const token = screen.getByLabelText('口令') as HTMLInputElement;
+  const section = token.closest('details');
+  expect(section).not.toBeNull();
+  expect(section!.open).toBe(false);
+  expect(token.type).toBe('password');
+  fireEvent.click(screen.getByText('访问口令（可选）'));
+  fireEvent.change(token, { target: { value: 'sample-token' } });
+  fireEvent.click(screen.getByText('访问口令（可选）'));
+  expect(section!.open).toBe(false);
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '北京' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '上海' } });
+  fireEvent.click(screen.getByRole('button', { name: '对调出发与到达城市' }));
+  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
+  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({
+    from: expect.objectContaining({ code: 'SHH' }),
+    to: expect.objectContaining({ code: 'BJP' }),
+    token: 'sample-token',
+  })));
+});

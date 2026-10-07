@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { AutoComplete, Button, DatePicker, Form, Input, Space, Tooltip } from 'antd';
+import { AutoComplete, Button, DatePicker, Form, Input, Tooltip } from 'antd';
 import { SwapOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -82,57 +82,58 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
   return (
     <Form
       form={form}
-      layout="inline"
+      layout="vertical"
+      className="query-form"
       initialValues={{ date: dayjs(defaultDate()) }}
-      style={{ rowGap: 12, marginBottom: 16, padding: 16, background: '#fff', borderRadius: 12 }}
     >
-      <Form.Item name="from" label="出发城市" rules={[{ required: true, message: '请输入出发城市' }]}>
+      <Form.Item className="query-from" name="from" label="出发城市" rules={[{ required: true, message: '请输入出发城市' }]}>
         <AutoComplete
           options={cityOptions}
           filterOption={(input, option) => (option?.value ?? '').includes(input)}
           placeholder="北京"
-          style={{ width: 140 }}
+          style={{ width: '100%' }}
         />
       </Form.Item>
 
-      <Form.Item label={null} style={{ marginInlineEnd: 0 }}>
+      <div className="query-swap">
         <Tooltip title="对调出发与到达城市">
           <Button
             type="text"
+            shape="circle"
             icon={<SwapOutlined />}
             aria-label="对调出发与到达城市"
             onClick={swapCities}
           />
         </Tooltip>
-      </Form.Item>
+      </div>
 
-      <Form.Item name="to" label="到达城市" rules={[{ required: true, message: '请输入到达城市' }]}>
+      <Form.Item className="query-to" name="to" label="到达城市" rules={[{ required: true, message: '请输入到达城市' }]}>
         <AutoComplete
           options={cityOptions}
           filterOption={(input, option) => (option?.value ?? '').includes(input)}
           placeholder="上海"
-          style={{ width: 140 }}
+          style={{ width: '100%' }}
         />
       </Form.Item>
 
-      <Form.Item name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
-        <DatePicker placeholder="选择日期" />
+      <Form.Item className="query-date" name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
+        <DatePicker placeholder="选择日期" style={{ width: '100%' }} />
       </Form.Item>
 
-      <Form.Item name="token" label="口令">
-        <Input placeholder="可选" autoComplete="off" style={{ width: 120 }} />
-      </Form.Item>
-
-      <Form.Item label={null} style={{ marginLeft: 'auto', marginInlineEnd: 0 }}>
-        <Space>
-          <Button type="primary" htmlType="button" loading={querying} onClick={() => submit(onDirect)}>
-            查直达
-          </Button>
-          <Button htmlType="button" loading={querying} onClick={() => submit(onTransfer)}>
-            查中转
-          </Button>
-        </Space>
-      </Form.Item>
+      <div className="query-actions">
+        <Button type="primary" htmlType="button" loading={querying} onClick={() => submit(onDirect)}>
+          查直达
+        </Button>
+        <Button htmlType="button" loading={querying} onClick={() => submit(onTransfer)}>
+          查中转
+        </Button>
+      </div>
+      <details className="query-access">
+        <summary>访问口令（可选）</summary>
+        <Form.Item name="token" label="口令">
+          <Input type="password" placeholder="可选" autoComplete="off" />
+        </Form.Item>
+      </details>
     </Form>
   );
 }

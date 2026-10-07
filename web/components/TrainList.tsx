@@ -7,12 +7,12 @@
  * 买短乘长（D45~D53）：无票车卡片内联「查买短乘长」，手动点、就地显示结果。
  */
 
-import { Button, Card, Empty, Space, Tag, Typography } from 'antd';
+import { Button, Card, Empty, Tag, Typography } from 'antd';
 
 import { nameOf, viaTags, seatLabel, seatPrices, priceKey } from '../lib/view.ts';
+import JourneyTimes from './JourneyTimes.tsx';
 import { isSoldOut } from '../lib/buyshort.ts';
 import type { BuyShortResult } from '../lib/buyshort.ts';
-import type { SeatState } from '../lib/view.ts';
 import type { Train } from '../../shared/types.ts';
 
 interface Props {
@@ -44,15 +44,8 @@ interface Props {
   onQueryBuyShort: (train: Train, key: string) => void;
 }
 
-/** 席别状态 → antd Tag color */
-const SEAT_COLOR: Record<SeatState, string> = {
-  off: 'default',
-  on: 'success',
-  hl: 'green',
-};
-
 /** 灰字提示样式（风险提示 / 无结果） */
-const HINT_STYLE: React.CSSProperties = { color: 'rgba(0,0,0,.45)', fontSize: 13 };
+const HINT_STYLE: React.CSSProperties = { color: 'var(--rail-secondary)', fontSize: 13 };
 
 /**
  * 买短乘长结果区（D45~D53）——未查时不渲染，挂在卡片下方。
@@ -76,7 +69,7 @@ function BuyShortResultArea({
   const priceText = result?.kind === 'found' && result.price != null ? `¥${result.price}` : '有票';
 
   return (
-    <div style={{ marginTop: 6 }}>
+    <div className="buy-short-result">
       {loading ? (
         <Typography.Text style={HINT_STYLE}>
           查询中… 已查 {progress ?? 0} 站，均无票
@@ -117,7 +110,7 @@ export default function TrainList({
   if (!trains.length) return <Empty description="没有直达车次" />;
 
   return (
-    <Space orientation="vertical" style={{ width: '100%' }} size={10}>
+    <div className="train-list">
       {trains.map((t) => {
         const from = nameOf(t.fromStation, stationMap);
         const to = nameOf(t.toStation, stationMap);
@@ -135,70 +128,32 @@ export default function TrainList({
         const bsKey = t.trainNo;
 
         return (
-          <Card key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} size="small">
-            <Space align="start" size={16} wrap>
-              <Typography.Text strong style={{ fontSize: 17, color: '#2563eb' }}>
-                {t.trainCode}
-              </Typography.Text>
-
-              <Space size={8}>
-                <Typography.Text strong>{t.startTime}</Typography.Text>
-                <Typography.Text type="secondary">{from}</Typography.Text>
-                <Typography.Text type="secondary">→</Typography.Text>
-                <Typography.Text type="secondary">{t.duration}</Typography.Text>
-                <Typography.Text type="secondary">→</Typography.Text>
-                <Typography.Text strong>{t.arriveTime}</Typography.Text>
-                <Typography.Text type="secondary">{to}</Typography.Text>
-              </Space>
-
-              {via.length > 0 && <Tag>{via.join(' · ')}</Tag>}
-
-              <Space size={4} wrap>
-                {seats.length ? (
-                  seats.map((x) => (
-                    <Tag key={x.key} color={SEAT_COLOR[x.label!.state]}>
-                      {x.label!.text}
-                    </Tag>
-                  ))
-                ) : (
-                  <Tag>无票</Tag>
+          <Card key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
+            <div className="ticket-main">
+              <div className="train-identity"><strong>{t.trainCode}</strong><span>直达列车</span></div>
+              <JourneyTimes fromStation={from} toStation={to} startTime={t.startTime} arriveTime={t.arriveTime} duration={t.duration} />
+              <div className="seat-list">
+                {seats.length ? seats.map((x) => (
+                  <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
+                )) : <span className="seat-label seat-off">无票</span>}
+              </div>
+              <div className="ticket-actions">
+                {priceItems.length ? priceItems.map((p) => (
+                  <span className="price-item" key={p.code}>{p.name} {p.label}</span>
+                )) : (
+                  <Button type="link" disabled={!key || !t.seatTypes} loading={key ? loadingPrice.has(key) : false}
+                    onClick={() => key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, date, t.seatTypes)}>
+                    查价
+                  </Button>
                 )}
-              </Space>
-
-              {priceItems.length ? (
-                <Space size={10} wrap>
-                  {priceItems.map((p) => (
-                    <Typography.Text key={p.code} strong style={{ color: '#d97706' }}>
-                      {p.name} {p.label}
-                    </Typography.Text>
-                  ))}
-                </Space>
-              ) : (
-                <Button
-                  size="small"
-                  type="link"
-                  disabled={!key || !t.seatTypes}
-                  loading={key ? loadingPrice.has(key) : false}
-                  onClick={() =>
-                    key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, date, t.seatTypes)
-                  }
-                >
-                  查价
-                </Button>
-              )}
-
-              {/* 买短乘长入口（仅无票车，D45）——放「查价」旁；查到结果后按钮隐去，结果在下方 */}
-              {soldOut && !buyShort[bsKey] && (
-                <Button
-                  size="small"
-                  type="link"
-                  loading={buyShortLoading.has(bsKey)}
-                  onClick={() => onQueryBuyShort(t, bsKey)}
-                >
-                  买短乘长
-                </Button>
-              )}
-            </Space>
+                {soldOut && !buyShort[bsKey] && (
+                  <Button type="link" loading={buyShortLoading.has(bsKey)} onClick={() => onQueryBuyShort(t, bsKey)}>
+                    买短乘长
+                  </Button>
+                )}
+              </div>
+            </div>
+            {via.length > 0 && <Tag className="wrapping-tag ticket-note">{via.join(' · ')}</Tag>}
 
             {soldOut && (
               <BuyShortResultArea
@@ -211,6 +166,6 @@ export default function TrainList({
           </Card>
         );
       })}
-    </Space>
+    </div>
   );
 }

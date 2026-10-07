@@ -6,14 +6,14 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Collapse, Empty, Space, Tag, Typography } from 'antd';
+import { Button, Card, Collapse, Empty, Space, Tag } from 'antd';
 
+import JourneyTimes from './JourneyTimes.tsx';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
 import {
   viaTags,
   seatLabel,
   planFlags,
-  waitSeverity,
   groupByHub,
   LEG_SEAT_NAMES,
   seatPrices,
@@ -21,7 +21,7 @@ import {
   priceLabel,
   durationLabel,
 } from '../lib/view.ts';
-import type { FlagKind, SeatState } from '../lib/view.ts';
+import type { FlagKind } from '../lib/view.ts';
 import type { AnnotatedPlan, PlanGroup, TransferLeg } from '../../shared/types.ts';
 
 interface Props {
@@ -50,13 +50,6 @@ const FLAG_COLOR: Record<FlagKind, string> = {
   ok: 'success',
 };
 
-/** 席别状态 → antd Tag color */
-const SEAT_COLOR: Record<SeatState, string> = {
-  off: 'default',
-  on: 'success',
-  hl: 'green',
-};
-
 /** 一程（中转的一段） */
 function Leg({
   leg,
@@ -80,126 +73,76 @@ function Leg({
   const priceItems = seatPrices(priceMap);
 
   return (
-    <Space align="start" size={10} style={{ display: 'flex' }}>
-      <Tag color="blue" style={{ borderRadius: '50%', marginTop: 4 }}>
-        {no}
-      </Tag>
-      <div>
-        <Space size={8} wrap>
-          <Typography.Text strong>{leg.trainCode}</Typography.Text>
-          {via.length > 0 && <Tag>{via.join(' · ')}</Tag>}
-          {priceItems.length ? (
-            priceItems.map((p) => (
-              <Typography.Text key={p.code} strong style={{ color: '#d97706' }}>
-                {p.name} {p.label}
-              </Typography.Text>
-            ))
-          ) : (
-            <Button
-              size="small"
-              type="link"
-              disabled={!key || !leg.seatTypes}
-              loading={key ? loadingPrice.has(key) : false}
-              onClick={() =>
-                key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')
-              }
-            >
-              查价
-            </Button>
-          )}
-        </Space>
-        <div>
-          <Space size={8}>
-            <Typography.Text strong>{leg.startTime}</Typography.Text>
-            <Typography.Text type="secondary">{leg.fromStation}</Typography.Text>
-            <Typography.Text type="secondary">→ {leg.duration} →</Typography.Text>
-            <Typography.Text strong>{leg.arriveTime}</Typography.Text>
-            <Typography.Text type="secondary">{leg.toStation}</Typography.Text>
-          </Space>
+    <div className="transfer-leg">
+      <span className="leg-index">{no}</span>
+      <div className="leg-content">
+        <div className="leg-heading">
+          <strong>{leg.trainCode}</strong>
+          {via.length > 0 && <Tag className="wrapping-tag">{via.join(' · ')}</Tag>}
         </div>
-        {seats.length > 0 && (
-          <Space size={4} wrap style={{ marginTop: 4 }}>
-            {seats.map((x) => (
-              <Tag key={x.key} color={SEAT_COLOR[x.label!.state]}>
-                {x.label!.text}
-              </Tag>
-            ))}
-          </Space>
-        )}
+        <JourneyTimes fromStation={leg.fromStation} toStation={leg.toStation} startTime={leg.startTime} arriveTime={leg.arriveTime} duration={leg.duration} />
+        <div className="leg-tools">
+          <div className="seat-list">{seats.map((x) => (
+            <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
+          ))}</div>
+          <div className="ticket-actions">
+            {priceItems.length ? priceItems.map((p) => <span key={p.code} className="price-item">{p.name} {p.label}</span>) : (
+              <Button type="link" disabled={!key || !leg.seatTypes} loading={key ? loadingPrice.has(key) : false}
+                onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')}>
+                查价
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
-    </Space>
+    </div>
   );
 }
 
-/** 单个中转方案卡片 */
-function TransferCard({
-  plan: p,
-  date,
-  prices,
-  loadingPrice,
-  onQueryPrice,
-}: { plan: AnnotatedPlan; date: string } & Pick<
-  Props,
-  'prices' | 'loadingPrice' | 'onQueryPrice'
->) {
+/** 关键行程信息始终可见，两程完整信息原位展开。 */
+function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice }: {
+  plan: AnnotatedPlan; date: string;
+} & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
   const flags = planFlags(p.flags);
-  const severity = waitSeverity(p.flags);
-  const waitColor = severity === 'warn' ? 'warning' : severity === 'dim' ? 'default' : 'blue';
-
-  // 两程都查到「参考席别（二等座）」价格时，显示合计参考价
   const legPrices = p.legs.map((leg) => {
-    const k = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
-    return k ? prices[k]?.[REFERENCE_SEAT_CODE] : undefined;
+    const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
+    return key ? prices[key]?.[REFERENCE_SEAT_CODE] : undefined;
   });
-  const total = legPrices.every((x) => x != null) ? legPrices.reduce((a, b) => a! + b!, 0) : null;
+  const total = legPrices.length > 0 && legPrices.every((x) => x != null)
+    ? legPrices.reduce((a, b) => a! + b!, 0) : null;
 
   return (
-    <Card size="small" style={{ marginBottom: 10 }}>
-      <Space style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Typography.Text strong>
-          {p.fromStation} → {p.endStation}
-        </Typography.Text>
-        <Space size={12}>
-          {total != null && (
-            <Typography.Text strong style={{ color: '#d97706' }}>
-              参考价 {priceLabel(total)}
-            </Typography.Text>
-          )}
-          <Typography.Text style={{ color: '#2563eb' }}>总耗时 {durationLabel(p.totalMinutes)}</Typography.Text>
-        </Space>
-      </Space>
-
-      <div style={{ marginTop: 8 }}>
-        {p.legs.map((leg, i) => (
-          <div key={`${leg.trainCode}-${i}`}>
-            <Leg
-              leg={leg}
-              no={i + 1}
-              date={date}
-              prices={prices}
-              loadingPrice={loadingPrice}
-              onQueryPrice={onQueryPrice}
-            />
-            {i === 0 && (
-              <Space size={6} style={{ margin: '6px 0 6px 30px' }}>
-                <Tag color={waitColor}>换乘 {p.middleStation}　等待 {durationLabel(p.waitMinutes)}</Tag>
-                <Tag>{p.sameStation ? '同站' : '同城异站'}</Tag>
-                {p.sameTrain && <Tag color="success">同车接续</Tag>}
-              </Space>
-            )}
-          </div>
-        ))}
+    <Card className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
+      <div className="ticket-caption">
+        <span>{p.fromStation} → {p.endStation}</span>
+        <span>总耗时 {durationLabel(p.totalMinutes)}</span>
       </div>
-
-      {flags.length > 0 && (
-        <Space size={6} wrap style={{ marginTop: 8 }}>
-          {flags.map((f) => (
-            <Tag key={f.label} color={FLAG_COLOR[f.kind]}>
-              {f.label}
-            </Tag>
-          ))}
-        </Space>
-      )}
+      <div className="ticket-main">
+        <div className="train-identity"><strong>{p.firstTrainCode} → {p.secondTrainCode}</strong><span>{p.sameTrain ? '同车接续' : '换乘一次'}</span></div>
+        <JourneyTimes fromStation={p.fromStation} toStation={p.endStation} startTime={p.startTime} arriveTime={p.arriveTime} duration={durationLabel(p.totalMinutes)} />
+        <div className="transfer-facts">
+          <div className="transfer-wait">换乘 {p.middleStation}　等待 {durationLabel(p.waitMinutes)}</div>
+          <span className="muted">{p.sameStation ? '同站' : '同城异站'}</span>
+          <div className="seat-list">
+            {p.legs.map((leg, index) => {
+              const entries = Object.entries(leg.seats).filter(([, raw]) => raw && raw !== '--');
+              const seat = entries.find(([code]) => code === 'ZE') ?? entries[0];
+              const label = seat ? seatLabel(LEG_SEAT_NAMES[seat[0]] ?? seat[0], seat[1]) : null;
+              return <span key={index} className={`seat-label seat-${label?.state ?? 'off'}`}>第{index + 1}程 {label?.text ?? '暂无余票信息'}</span>;
+            })}
+          </div>
+          {flags.length > 0 && <Space size={4} wrap>{flags.map((flag) => <Tag className="wrapping-tag" key={flag.label} color={FLAG_COLOR[flag.kind]}>{flag.label}</Tag>)}</Space>}
+        </div>
+        <div className="ticket-actions">
+          {total != null ? <strong className="total-price">参考价 {priceLabel(total)}</strong> : <span className="muted">展开两程查价</span>}
+        </div>
+      </div>
+      <details className="journey-details">
+        <summary>两程详情</summary>
+        <div className="transfer-legs">{p.legs.map((leg, index) => (
+          <Leg key={`${leg.trainCode}-${index}`} leg={leg} no={index + 1} date={date} prices={prices} loadingPrice={loadingPrice} onQueryPrice={onQueryPrice} />
+        ))}</div>
+      </details>
     </Card>
   );
 }
@@ -243,7 +186,8 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
         {g.plans.length > 1 && (
           <Collapse
             size="small"
-            style={{ marginBottom: 10 }}
+            ghost
+            styles={{ body: { padding: 0 }, header: { padding: 8, minHeight: 44 } }}
             items={[{
               key: 'alternatives',
               label: `同车次其他方案（${g.plans.length - 1}）`,
@@ -255,5 +199,5 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
     )),
   }));
 
-  return <Collapse items={items} activeKey={activeKeys} onChange={(k) => setActiveKeys(k as string[])} />;
+  return <Collapse ghost className="hub-list" styles={{ body: { padding: 0 }, header: { padding: '12px 4px', minHeight: 44 } }} items={items} activeKey={activeKeys} onChange={(k) => setActiveKeys(k as string[])} />;
 }
