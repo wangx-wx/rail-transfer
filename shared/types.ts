@@ -54,6 +54,8 @@ export interface Train {
   secretStr: string;
   /** 各席别余票 */
   seats: SeatAvailability[];
+  /** 该车次的席别码串（余票响应第 35 列，如 `9MOO` / `1341`）；查价时原样回传 */
+  seatTypes: string;
   /** 已查询到的价格（元）；未查为 undefined */
   price?: number;
 }
@@ -79,6 +81,8 @@ export interface TransferLeg {
   toStationNo?: string;
   /** 该程各席别余票原始值（键为席别编码） */
   seats: Record<string, string>;
+  /** 该程的席别码串（fullList.seat_types，如 `POMO`）；查价时原样回传 */
+  seatTypes?: string;
   /** 已查询到的价格（元）；未查为 undefined */
   price?: number;
 }

@@ -16,7 +16,6 @@ interface Props {
   result: {
     trains: Train[];
     stationMap: Record<string, string>;
-    seat: string;
     /** 查询日期（YYYY-MM-DD，查价用） */
     date: string;
   } | null;
@@ -30,6 +29,7 @@ interface Props {
     fromStationNo: string | undefined,
     toStationNo: string | undefined,
     date: string,
+    seatTypes: string,
   ) => void;
 }
 
@@ -42,7 +42,7 @@ const SEAT_COLOR: Record<SeatState, string> = {
 
 export default function TrainList({ result, prices, loadingPrice, onQueryPrice }: Props) {
   if (!result) return null;
-  const { trains, stationMap, seat, date } = result;
+  const { trains, stationMap, date } = result;
   if (!trains.length) return <Empty description="没有直达车次" />;
 
   return (
@@ -52,7 +52,7 @@ export default function TrainList({ result, prices, loadingPrice, onQueryPrice }
         const to = nameOf(t.toStation, stationMap);
         const via = viaTags(nameOf(t.startStation, stationMap), nameOf(t.endStation, stationMap), from, to);
         const seats = t.seats
-          .map((s) => ({ label: seatLabel(s.name, s.raw, s.code === seat), key: s.code }))
+          .map((s) => ({ label: seatLabel(s.name, s.raw), key: s.code }))
           .filter((x) => x.label);
 
         const key = priceKey(t.trainNo, t.fromStationNo, t.toStationNo);
@@ -102,9 +102,11 @@ export default function TrainList({ result, prices, loadingPrice, onQueryPrice }
                 <Button
                   size="small"
                   type="link"
-                  disabled={!key}
+                  disabled={!key || !t.seatTypes}
                   loading={key ? loadingPrice.has(key) : false}
-                  onClick={() => key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, date)}
+                  onClick={() =>
+                    key && onQueryPrice(t.trainNo, t.fromStationNo, t.toStationNo, date, t.seatTypes)
+                  }
                 >
                   查价
                 </Button>

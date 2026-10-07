@@ -6,7 +6,7 @@
  * 保持纯函数便于单测（T21）。
  */
 
-import { SEAT_OPTIONS } from '../../shared/constants.ts';
+import { SEAT_CODE_NAME } from '../../shared/constants.ts';
 import type { PlanFlags, PlanGroup } from '../../shared/types.ts';
 
 /** 中转每程的席别编码 → 中文名 */
@@ -122,20 +122,24 @@ export function durationLabel(minutes: number | null | undefined): string {
   return `${h}时${rest}分`;
 }
 
-/** 席别价格表 → 展示条目（按 SEAT_OPTIONS 顺序，只保留有价的） */
+/** 席别价格表 → 展示条目（按价格表插入顺序，只保留有价的） */
 export interface SeatPriceItem {
   code: string;
   name: string;
   label: string;
 }
 
+/**
+ * 席别价格表 → 展示条目。
+ *
+ * 键为席别码（`O`/`M`/`9`/`1`/`3`…，见 `SEAT_CODE_NAME`），值为价格（元）。
+ * 名字用官方表映射；未知码回退码本身（不丢数据）。
+ */
 export function seatPrices(map: Record<string, number> | undefined): SeatPriceItem[] {
   if (!map) return [];
   const items: SeatPriceItem[] = [];
-  for (const opt of SEAT_OPTIONS) {
-    const p = map[opt.code];
-    if (p == null) continue;
-    items.push({ code: opt.code, name: opt.name, label: priceLabel(p) });
+  for (const [code, p] of Object.entries(map)) {
+    items.push({ code, name: SEAT_CODE_NAME[code] ?? code, label: priceLabel(p) });
   }
   return items;
 }

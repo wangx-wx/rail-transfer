@@ -5,8 +5,10 @@
  * 分组逻辑来自 view.groupByHub（纯函数，已单测）。
  */
 
+import { useEffect, useState } from 'react';
 import { Button, Card, Collapse, Empty, Space, Tag, Typography } from 'antd';
 
+import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
 import {
   viaTags,
   seatLabel,
@@ -26,8 +28,6 @@ interface Props {
   groups: PlanGroup[];
   /** 查询日期（查价用） */
   date: string;
-  /** 用户所选席别（合计参考价按它求和） */
-  seat: string;
   /** 价格缓存（键 = priceKey → 各席别价格表） */
   prices: Record<string, Record<string, number>>;
   /** 正在查价的键 */
@@ -38,6 +38,7 @@ interface Props {
     fromStationNo: string | undefined,
     toStationNo: string | undefined,
     date: string,
+    seatTypes: string,
   ) => void;
 }
 
@@ -97,9 +98,11 @@ function Leg({
             <Button
               size="small"
               type="link"
-              disabled={!key}
+              disabled={!key || !leg.seatTypes}
               loading={key ? loadingPrice.has(key) : false}
-              onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date)}
+              onClick={() =>
+                key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')
+              }
             >
               查价
             </Button>
@@ -132,11 +135,10 @@ function Leg({
 function TransferCard({
   group,
   date,
-  seat,
   prices,
   loadingPrice,
   onQueryPrice,
-}: { group: PlanGroup; date: string; seat: string } & Pick<
+}: { group: PlanGroup; date: string } & Pick<
   Props,
   'prices' | 'loadingPrice' | 'onQueryPrice'
 >) {
@@ -145,10 +147,10 @@ function TransferCard({
   const severity = waitSeverity(p.flags);
   const waitColor = severity === 'warn' ? 'warning' : severity === 'dim' ? 'default' : 'blue';
 
-  // 两程都查到「用户所选席别」价格时，显示合计参考价
+  // 两程都查到「参考席别（二等座）」价格时，显示合计参考价
   const legPrices = p.legs.map((leg) => {
     const k = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
-    return k ? prices[k]?.[seat] : undefined;
+    return k ? prices[k]?.[REFERENCE_SEAT_CODE] : undefined;
   });
   const total = legPrices.every((x) => x != null) ? legPrices.reduce((a, b) => a! + b!, 0) : null;
 
@@ -203,10 +205,21 @@ function TransferCard({
   );
 }
 
-export default function TransferList({ groups, date, seat, prices, loadingPrice, onQueryPrice }: Props) {
+export default function TransferList({ groups, date, prices, loadingPrice, onQueryPrice }: Props) {
+  const hubGroups = groupByHub(groups);
+  const allKeys = hubGroups.map(([hub]) => hub);
+
+  // 受控展开：流式到达的新枢纽自动展开。
+  // ⚠️ 不能用 defaultActiveKey —— 它只在挂载时生效，后续到达的枢纽面板会默认折叠，
+  // 用户看不到（自动查好的）参考价。故用受控 activeKey，新增键并入、已折叠的不再强制展开。
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  useEffect(() => {
+    setActiveKeys((prev) => [...new Set([...prev, ...allKeys])]);
+  }, [allKeys.join('\u0000')]);
+
   if (!groups.length) return <Empty description="没有中转方案" />;
 
-  const items = groupByHub(groups).map(([hub, list]) => ({
+  const items = hubGroups.map(([hub, list]) => ({
     key: hub,
     label: (
       <Space>
@@ -219,7 +232,6 @@ export default function TransferList({ groups, date, seat, prices, loadingPrice,
         key={`${g.firstTrainCode}-${g.secondTrainCode}-${g.middleStations.map((m) => m.name).join('/')}`}
         group={g}
         date={date}
-        seat={seat}
         prices={prices}
         loadingPrice={loadingPrice}
         onQueryPrice={onQueryPrice}
@@ -227,5 +239,5 @@ export default function TransferList({ groups, date, seat, prices, loadingPrice,
     )),
   }));
 
-  return <Collapse items={items} defaultActiveKey={items.map((i) => i.key)} />;
+  return <Collapse items={items} activeKey={activeKeys} onChange={(k) => setActiveKeys(k as string[])} />;
 }

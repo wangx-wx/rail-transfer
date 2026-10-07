@@ -28,8 +28,6 @@ export interface QueryContext {
   from: ResolvedCity;
   to: ResolvedCity;
   date: string;
-  /** 参考席别（无席别筛选后固定为二等座，用于余票高亮与中转参考价） */
-  seat: string;
   token: string;
 }
 
@@ -66,7 +64,7 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
       form.setFields([{ name: 'to', errors: [`未识别的城市：${v.to}`] }]);
       return null;
     }
-    return { from, to, date: v.date.format('YYYY-MM-DD'), seat: 'ZE', token: (v.token ?? '').trim() };
+    return { from, to, date: v.date.format('YYYY-MM-DD'), token: (v.token ?? '').trim() };
   }
 
   /** 两个按钮共用的提交入口 */

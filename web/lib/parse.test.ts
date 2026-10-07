@@ -165,13 +165,23 @@ test('extractHubCodes：从 "码#站名" 抽码并去重', () => {
   expect(extractHubCodes(undefined)).toEqual([]);
 });
 
-// ── parsePrice（按值取，键归一到界面席别码）──────────────
-test('parsePrice：把各席别价格归一为界面席别码', () => {
+// ── parsePrice（按值取，键归一到席别码）──────────────────
+test('parsePrice：高铁码，数字码去 A 前缀', () => {
   expect(parsePrice({ data: { O: '¥626.0', M: '¥1033.0', A9: '¥2315.0', WZ: '¥626.0', train_no: 'x' } })).toEqual({
-    ZE: 626,
-    ZY: 1033,
-    SWZ: 2315,
+    O: 626,
+    M: 1033,
+    '9': 2315,
     WZ: 626,
+  });
+});
+
+test('parsePrice：普速数字码（1硬座 / 3硬卧 / 4软卧 / 6高软）', () => {
+  expect(parsePrice({ data: { A1: '¥180.5', A3: '¥310.5', A4: '¥559.5', A6: '¥525.5', WZ: '¥180.5' } })).toEqual({
+    '1': 180.5,
+    '3': 310.5,
+    '4': 559.5,
+    '6': 525.5,
+    WZ: 180.5,
   });
 });
 
@@ -180,7 +190,7 @@ test('parsePrice：忽略非价格值（train_no / 纯数字内部码 / 未知�
 });
 
 test('parsePrice：保留一位小数', () => {
-  expect(parsePrice({ data: { O: '¥177.5' } })).toEqual({ ZE: 177.5 });
+  expect(parsePrice({ data: { O: '¥177.5' } })).toEqual({ O: 177.5 });
 });
 
 test('parsePrice：空响应 / 无 data → 空对象', () => {
@@ -196,4 +206,23 @@ test('parseTransferLeg：解析站序（票价接口需要）', () => {
   const leg = plan.legs[0]!;
   expect(leg.fromStationNo).toBeDefined();
   expect(leg.toStationNo).toBeDefined();
+});
+
+test('parseTransferLeg：解析 seatTypes（查价参数，来自 fullList.seat_types）', () => {
+  const raw = transferFixture();
+  const leg = parseTransferItem(raw.data!.middleList![0]!).legs[0]!;
+  // fixture 里 G8735 的 seat_types 实测为 "POMO"
+  expect(leg.seatTypes).toBe('POMO');
+});
+
+// 回归：普速车（K/T/Z/数字车次）用高铁席别码 `OM9WZ` 查价会返回空
+// （12306 从左到右解析 seat_types，遇不支持码即截断）。故必须用该车次自己的码。
+test('parseTrainRow：解析普速车自己的席别码（Z281 → 1431）', () => {
+  const raw = fixture<UpstreamEnvelope<LeftTicketData>>('left-ticket-55.json');
+  const { trains } = parseLeftTicket(raw);
+  const z281 = trains.find((t) => t.trainCode === 'Z281')!;
+  expect(z281.seatTypes).toBe('1431');
+  // 高铁车同样带码
+  const g531 = trains.find((t) => t.trainCode === 'G531')!;
+  expect(g531.seatTypes).toBe('9MOO');
 });

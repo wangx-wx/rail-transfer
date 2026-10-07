@@ -113,11 +113,19 @@ test('priceLabel：未查到 → 空串', () => {
   expect(priceLabel(NaN)).toBe('');
 });
 
-test('seatPrices：按 SEAT_OPTIONS 顺序，只保留有价的', () => {
-  expect(seatPrices({ ZY: 1033, ZE: 626 })).toEqual([
-    { code: 'ZE', name: '二等座', label: '¥626' },
-    { code: 'ZY', name: '一等座', label: '¥1033' },
+test('seatPrices：按价格表顺序，名字用官方表映射', () => {
+  // 高铁码
+  expect(seatPrices({ O: 626, M: 1033 })).toEqual([
+    { code: 'O', name: '二等座', label: '¥626' },
+    { code: 'M', name: '一等座', label: '¥1033' },
   ]);
+  // 普速数字码
+  expect(seatPrices({ '1': 180.5, '3': 310.5 })).toEqual([
+    { code: '1', name: '硬座', label: '¥180.5' },
+    { code: '3', name: '硬卧', label: '¥310.5' },
+  ]);
+  // 未知码回退码本身，不丢数据
+  expect(seatPrices({ X: 99 })).toEqual([{ code: 'X', name: 'X', label: '¥99' }]);
   expect(seatPrices(undefined)).toEqual([]);
   expect(seatPrices({})).toEqual([]);
 });

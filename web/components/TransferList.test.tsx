@@ -3,7 +3,7 @@
  */
 
 import { test, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 import TransferList from './TransferList.tsx';
 import { annotatePlans, mergePlans } from '../lib/plans.ts';
@@ -26,8 +26,8 @@ function plan(over: Partial<TransferPlan> = {}): TransferPlan {
     sameTrain: false,
     score: 0,
     legs: [
-      { trainCode: 'G1', trainNo: '1', startStation: '北京南', endStation: '南京南', fromStation: '北京南', toStation: '南京南', startTime: '06:00', arriveTime: '09:00', duration: '03:00', fromStationNo: '01', toStationNo: '05', seats: { ZE: '有' } },
-      { trainCode: 'G2', trainNo: '2', startStation: '南京南', endStation: '上海虹桥', fromStation: '南京南', toStation: '上海虹桥', startTime: '09:30', arriveTime: '12:00', duration: '02:30', fromStationNo: '01', toStationNo: '04', seats: { ZE: '无' } },
+      { trainCode: 'G1', trainNo: '1', startStation: '北京南', endStation: '南京南', fromStation: '北京南', toStation: '南京南', startTime: '06:00', arriveTime: '09:00', duration: '03:00', fromStationNo: '01', toStationNo: '05', seatTypes: 'POMO', seats: { ZE: '有' } },
+      { trainCode: 'G2', trainNo: '2', startStation: '南京南', endStation: '上海虹桥', fromStation: '南京南', toStation: '上海虹桥', startTime: '09:30', arriveTime: '12:00', duration: '02:30', fromStationNo: '01', toStationNo: '04', seatTypes: 'POMO', seats: { ZE: '无' } },
     ],
     ...over,
   };
@@ -38,7 +38,6 @@ const groups = (plans: TransferPlan[]) => mergePlans(annotatePlans(plans));
 /** 价格相关 props 的默认值 */
 const priceProps = {
   date: '2026-10-07',
-  seat: 'ZE',
   prices: {} as Record<string, Record<string, number>>,
   loadingPrice: new Set<string>(),
   onQueryPrice: vi.fn(),
@@ -86,7 +85,7 @@ test('TransferList：两程价格都查到时显示合计参考价', () => {
     <TransferList
       groups={groups([plan()])}
       {...priceProps}
-      prices={{ '1|01|05': { ZE: 300 }, '2|01|04': { ZE: 280 } }}
+      prices={{ '1|01|05': { O: 300 }, '2|01|04': { O: 280 } }}
     />,
   );
   expect(screen.getByText('参考价 ¥580')).toBeTruthy();
@@ -94,9 +93,29 @@ test('TransferList：两程价格都查到时显示合计参考价', () => {
 
 test('TransferList：只查到一程时不显示合计', () => {
   render(
-    <TransferList groups={groups([plan()])} {...priceProps} prices={{ '1|01|05': { ZE: 300 } }} />,
+    <TransferList groups={groups([plan()])} {...priceProps} prices={{ '1|01|05': { O: 300 } }} />,
   );
   expect(screen.queryByText(/参考价/)).toBeNull();
+});
+
+// 回归：流式到达的新枢纽面板必须自动展开（defaultActiveKey 只在挂载时生效，
+// 会让后到的枢纽默认折叠，用户看不到自动查好的参考价）。
+test('TransferList：流式新增枢纽自动展开', async () => {
+  const { rerender } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  expect(screen.getByText('G1')).toBeTruthy(); // 首个枢纽已展开，卡片可见
+
+  const second = plan({
+    middleStation: '郑州东',
+    firstTrainCode: 'G5',
+    secondTrainCode: 'G6',
+    legs: [
+      { trainCode: 'G5', trainNo: '5', startStation: '北京南', endStation: '郑州东', fromStation: '北京南', toStation: '郑州东', startTime: '07:00', arriveTime: '10:00', duration: '03:00', fromStationNo: '01', toStationNo: '04', seatTypes: 'POMO', seats: { ZE: '有' } },
+      { trainCode: 'G6', trainNo: '6', startStation: '郑州东', endStation: '上海虹桥', fromStation: '郑州东', toStation: '上海虹桥', startTime: '10:40', arriveTime: '13:00', duration: '02:20', fromStationNo: '01', toStationNo: '03', seatTypes: 'POMO', seats: { ZE: '有' } },
+    ],
+  });
+  rerender(<TransferList groups={groups([plan(), second])} {...priceProps} />);
+  // 后到的郑州东面板也自动展开
+  await waitFor(() => expect(screen.getByText('G5')).toBeTruthy());
 });
 
 test('TransferList：未查价的程显示「查价」按钮', () => {
@@ -108,5 +127,5 @@ test('TransferList：点「查价」触发回调', () => {
   const onQueryPrice = vi.fn();
   render(<TransferList groups={groups([plan()])} {...priceProps} onQueryPrice={onQueryPrice} />);
   screen.getAllByRole('button', { name: '查价' })[0]!.click();
-  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '05', '2026-10-07');
+  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '05', '2026-10-07', 'POMO');
 });

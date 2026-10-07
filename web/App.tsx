@@ -14,7 +14,6 @@ import { runQuery } from './lib/orchestrate.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
 import { processPlans } from './lib/plans.ts';
 import { priceKey } from './lib/view.ts';
-import { PRICE_SEAT_TYPES } from '../shared/constants.ts';
 import type { QueryContext } from './components/QueryForm.tsx';
 import QueryForm from './components/QueryForm.tsx';
 import StatusBar from './components/StatusBar.tsx';
@@ -31,7 +30,6 @@ type View = 'idle' | 'direct' | 'transfer';
 interface DirectResult {
   trains: Train[];
   stationMap: Record<string, string>;
-  seat: string;
   /** 查询日期（YYYY-MM-DD，查价用） */
   date: string;
 }
@@ -56,24 +54,32 @@ export default function App() {
   const ctxRef = useRef<QueryContext | null>(null);
   // 当前查询日期（传给列表用于查价）
   const [queryDate, setQueryDate] = useState('');
-  // 当前查询席别（合计参考价按它求和）
-  const [ctxSeat, setCtxSeat] = useState('ZE');
 
   /**
-   * 查一段行程的各席别价格（1 次请求，传全部席别码）。
+   * 查一段行程的各席别价格（1 次请求）。
    * 已在缓存或查过则跳过。直达车次与中转每程共用。
+   *
+   * ⚠️ `seatTypes` 必须用**该车次自己的席别码串**（余票第 35 列 / 中转
+   * `fullList.seat_types`）——12306 从左到右解析该串，遇到车次不支持的码就截断。
+   * 写死高铁码 `OM9WZ` 会让普速车返回空。
    */
   const fetchPrice = useCallback(
-    async (trainNo: string, fromStationNo: string | undefined, toStationNo: string | undefined, date: string) => {
+    async (
+      trainNo: string,
+      fromStationNo: string | undefined,
+      toStationNo: string | undefined,
+      date: string,
+      seatTypes: string,
+    ) => {
       const ctx = ctxRef.current;
       const key = priceKey(trainNo, fromStationNo, toStationNo);
-      if (!ctx || !key || !fromStationNo || !toStationNo) return;
+      if (!ctx || !key || !fromStationNo || !toStationNo || !seatTypes) return;
       if (key in prices || loadingPrice.has(key)) return;
 
       setLoadingPrice((prev) => new Set(prev).add(key));
       try {
         const r = await api.price(
-          { trainNo, fromStationNo, toStationNo, seatTypes: PRICE_SEAT_TYPES, date },
+          { trainNo, fromStationNo, toStationNo, seatTypes, date },
           { token: ctx.token, base: API_BASE },
         );
         const map = r.ok ? parsePrice(r.data) : {};
@@ -95,7 +101,6 @@ export default function App() {
     runningRef.current = true;
     ctxRef.current = ctx;
     setQueryDate(ctx.date);
-    setCtxSeat(ctx.seat);
     setQuerying(true);
     setView('direct');
     setDirect(null);
@@ -113,7 +118,7 @@ export default function App() {
       }
       const { trains, stationMap } = parseLeftTicket(r.data);
       // 合并全量站名表（直达响应自带的 map 只覆盖少数站）
-      setDirect({ trains, stationMap: { ...STATION_NAMES, ...stationMap }, seat: ctx.seat, date: ctx.date });
+      setDirect({ trains, stationMap: { ...STATION_NAMES, ...stationMap }, date: ctx.date });
       setStatus({ text: `直达 ${trains.length} 趟`, kind: 'info' });
     } catch (e) {
       setStatus({ text: `查询出错：${e}`, kind: 'error' });
@@ -129,7 +134,6 @@ export default function App() {
     runningRef.current = true;
     ctxRef.current = ctx;
     setQueryDate(ctx.date);
-    setCtxSeat(ctx.seat);
     setQuerying(true);
     setView('transfer');
     plansRef.current = [];
@@ -177,7 +181,7 @@ export default function App() {
             // 自动查最优一条的两程价格（D21）
             const best = processPlans(plansRef.current)[0]?.best;
             for (const leg of best?.legs ?? []) {
-              void fetchPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, ctx.date);
+              void fetchPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, ctx.date, leg.seatTypes ?? '');
             }
           },
         },
@@ -211,7 +215,6 @@ export default function App() {
           <TransferList
             groups={groups}
             date={queryDate}
-            seat={ctxSeat}
             prices={prices}
             loadingPrice={loadingPrice}
             onQueryPrice={fetchPrice}

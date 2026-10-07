@@ -23,6 +23,7 @@ function train(over: Partial<Train> = {}): Train {
     fromStationNo: '01',
     toStationNo: '02',
     secretStr: '',
+    seatTypes: '9MOO',
     seats: [{ code: 'ZE', name: '二等座', available: true, count: null, raw: '有' }],
     ...over,
   };
@@ -36,7 +37,7 @@ const priceProps = {
 };
 
 test('TrainList：空列表显示提示', () => {
-  render(<TrainList result={{ trains: [], stationMap: {}, seat: 'ZE', date: '2026-10-07' }} {...priceProps} />);
+  render(<TrainList result={{ trains: [], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
   expect(screen.getByText('没有直达车次')).toBeTruthy();
 });
 
@@ -48,7 +49,7 @@ test('TrainList：result 为 null 时不渲染', () => {
 test('TrainList：展示车次、站名与时刻', () => {
   render(
     <TrainList
-      result={{ trains: [train()], stationMap: { VNP: '北京南', AOH: '上海虹桥' }, seat: 'ZE', date: '2026-10-07' }}
+      result={{ trains: [train()], stationMap: { VNP: '北京南', AOH: '上海虹桥' }, date: '2026-10-07' }}
       {...priceProps}
     />,
   );
@@ -65,7 +66,6 @@ test('TrainList：始发/终到与上下车不同时标注', () => {
       result={{
         trains: [train({ startStation: 'BJP', endStation: 'HGH' })],
         stationMap: { VNP: '北京南', AOH: '上海虹桥', BJP: '北京', HGH: '杭州东' },
-        seat: 'ZE',
         date: '2026-10-07',
       }}
       {...priceProps}
@@ -80,7 +80,6 @@ test('TrainList：席别余票展示为标签', () => {
       result={{
         trains: [train({ seats: [{ code: 'ZE', name: '二等座', available: true, count: 12, raw: '12' }] })],
         stationMap: {},
-        seat: 'ZE',
         date: '2026-10-07',
       }}
       {...priceProps}
@@ -92,7 +91,7 @@ test('TrainList：席别余票展示为标签', () => {
 // ── 价格（懒加载）────────────────────────────────────────
 test('TrainList：未查价时显示「查价」按钮', () => {
   render(
-    <TrainList result={{ trains: [train()], stationMap: {}, seat: 'ZE', date: '2026-10-07' }} {...priceProps} />,
+    <TrainList result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }} {...priceProps} />,
   );
   expect(screen.getByRole('button', { name: '查价' })).toBeTruthy();
 });
@@ -100,9 +99,9 @@ test('TrainList：未查价时显示「查价」按钮', () => {
 test('TrainList：已查到价格时显示各席别金额', () => {
   render(
     <TrainList
-      result={{ trains: [train()], stationMap: {}, seat: 'ZE', date: '2026-10-07' }}
+      result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }}
       {...priceProps}
-      prices={{ '1|01|02': { ZE: 626, ZY: 1033, SWZ: 2315 } }}
+      prices={{ '1|01|02': { O: 626, M: 1033, '9': 2315 } }}
     />,
   );
   expect(screen.getByText('二等座 ¥626')).toBeTruthy();
@@ -115,11 +114,11 @@ test('TrainList：点「查价」触发回调（传车次与站序）', () => {
   const onQueryPrice = vi.fn();
   render(
     <TrainList
-      result={{ trains: [train()], stationMap: {}, seat: 'ZE', date: '2026-10-07' }}
+      result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }}
       {...priceProps}
       onQueryPrice={onQueryPrice}
     />,
   );
   screen.getByRole('button', { name: '查价' }).click();
-  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '02', '2026-10-07');
+  expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '02', '2026-10-07', '9MOO');
 });

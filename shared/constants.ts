@@ -71,45 +71,41 @@ export const FALLBACK_HUBS = [
 ];
 
 // ── 席别（D9 / D26）──────────────────────────────────────
-/** 界面可选席别（对应 SEAT_COLUMNS 的 code） */
-export const SEAT_OPTIONS = [
-  { code: 'ZE', name: '二等座' },
-  { code: 'ZY', name: '一等座' },
-  { code: 'SWZ', name: '商务座' },
-  { code: 'WZ', name: '无座' },
-];
+/**
+ * 中转「参考价」合计所用的席别码（二等座 `O`）。
+ *
+ * ⚠️ 这是**价格接口的席别码**（见 `SEAT_CODE_NAME`），不是界面码 `ZE`。
+ * 席别筛选已移除（D41），参考价固定按二等座合计。
+ */
+export const REFERENCE_SEAT_CODE = 'O';
 
 /**
- * 界面席别码 → queryTicketPrice 的 `seat_types` 参数码。
+ * 席别码 → 中文名（**12306 官方表**，取自 `queryLeftTicket_end_js.js` 的
+ * `seatTypeCodeForName`）。
  *
- * 实测（G531/G1/G3 三趟交叉验证）：
- *   `O` → 二等座、`M` → 一等座、`9` → 商务座。
- * 无座按二等座收费，故 `WZ` 用二等座码（实测无座价恒等于二等座价）。
- * 数字码返回的键带 `A` 前缀（`9`→`A9`、`2`→`A2`），故解析时按值取而非按键取。
+ * 用于把 `queryTicketPrice` 返回的席别码转成可读名（含普速车的数字码）。
+ * 无座有两个码：`WZ`（高铁）与 `W`（普速）。
  */
-export const SEAT_TYPE_CODE: Record<string, string> = {
-  ZE: 'O',
-  ZY: 'M',
-  SWZ: '9',
-  WZ: 'O',
+export const SEAT_CODE_NAME: Record<string, string> = {
+  '9': '商务座',
+  P: '特等座',
+  M: '一等座',
+  O: '二等座',
+  D: '优选一等座',
+  S: '二等包座',
+  '6': '高级软卧',
+  I: '一等卧',
+  J: '二等卧',
+  '4': '软卧',
+  '3': '硬卧',
+  F: '动卧',
+  A: '高级动卧',
+  '2': '软座',
+  '1': '硬座',
+  H: '其他',
+  WZ: '无座',
+  W: '无座',
 };
-
-/**
- * queryTicketPrice **响应键** → 界面席别码。
- *
- * 实测响应键（G531/G1/G3 一致）：`O` 二等座、`M` 一等座、`A9` 商务座、`WZ` 无座。
- * 数字码带 `A` 前缀，故 `A9` 而非 `9`。
- * 一次请求传 `OM9WZ` 即可拿到全部席别价（请求数不变）。
- */
-export const PRICE_KEY_SEAT: Record<string, string> = {
-  O: 'ZE',
-  M: 'ZY',
-  A9: 'SWZ',
-  WZ: 'WZ',
-};
-
-/** 查价时一次性请求的席别码串（覆盖界面全部可选席别） */
-export const PRICE_SEAT_TYPES = 'OM9WZ';
 
 // ── leftTicket 响应列位映射 ──────────────────────────────
 /**
@@ -162,6 +158,8 @@ export const COL = {
   trainDate: 13,
   fromStationNo: 16,
   toStationNo: 17,
+  /** 该车次的席别码串（如 `9MOO` / `1341`）；查价接口的 `seat_types` 参数来源 */
+  seatTypes: 35,
 } as const;
 
 /** 无票标记 */

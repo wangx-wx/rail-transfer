@@ -5,7 +5,7 @@
  * 本文件无副作用、无网络，可直接单测。
  */
 
-import { COL, SEAT_COLUMNS, NO_TICKET, PRICE_KEY_SEAT } from '../../shared/constants.ts';
+import { COL, SEAT_COLUMNS, NO_TICKET, SEAT_CODE_NAME } from '../../shared/constants.ts';
 import type {
   LeftTicketData,
   PriceData,
@@ -48,6 +48,7 @@ export function parseTrainRow(row: string): Train {
     toStationNo: f[COL.toStationNo] ?? '',
     secretStr: f[COL.secretStr] ?? '',
     seats,
+    seatTypes: f[COL.seatTypes] ?? '',
   };
 }
 
@@ -84,6 +85,7 @@ export function parseTransferLeg(leg: RawFullListItem): TransferLeg {
     duration: leg.lishi,
     fromStationNo: leg.from_station_no,
     toStationNo: leg.to_station_no,
+    seatTypes: leg.seat_types,
     seats: {
       ZE: leg.ze_num ?? '',
       ZY: leg.zy_num ?? '',
@@ -156,20 +158,24 @@ export function extractHubCodes(middleStationList: string[] | undefined): string
  * 解析 queryTicketPrice 响应，取出各席别价格（元）。
  *
  * 响应形如 `{"O":"¥626.0","M":"¥1033.0","A9":"¥2315.0","WZ":"¥626.0","train_no":"...","OT":[]}`。
- * 返回 `{ 界面席别码: 价格 }`（键经 `PRICE_KEY_SEAT` 归一，如 `A9` → `SWZ`）。
+ * 返回 `{ 席别码: 价格 }`（键为响应里的席别码，见 `SEAT_CODE_NAME`）。
+ *
  * **按值取**：只认带 `¥` 前缀的字符串；其余（`train_no` / `OT` / 纯数字内部码）忽略。
+ * **键归一**：响应里数字码带 `A` 前缀（`9`→`A9`、`1`→`A1`），故去掉前缀再映射；
+ * 普速车的 `1/2/3/4/6` 等码同样支持（见 `SEAT_CODE_NAME`）。
  * 无价格时返回空对象。
  */
 export function parsePrice(raw: UpstreamEnvelope<PriceData> | undefined): Record<string, number> {
   const data = raw?.data;
   const out: Record<string, number> = {};
   if (!data) return out;
-  for (const [k, v] of Object.entries(data)) {
+  for (const [rawKey, v] of Object.entries(data)) {
     if (typeof v !== 'string' || !v.startsWith('¥')) continue;
     const n = Number.parseFloat(v.slice(1));
     if (!Number.isFinite(n)) continue;
-    const seat = PRICE_KEY_SEAT[k];
-    if (seat) out[seat] = n;
+    // 数字码带 A 前缀（A9 → 9），字母码原样
+    const code = /^A\d+$/.test(rawKey) ? rawKey.slice(1) : rawKey;
+    if (SEAT_CODE_NAME[code]) out[code] = n;
   }
   return out;
 }
