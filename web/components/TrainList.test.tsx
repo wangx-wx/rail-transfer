@@ -141,20 +141,20 @@ function soldOutTrain(over: Partial<Train> = {}): Train {
 
 test('TrainList：有票车不显示买短乘长入口', () => {
   render(<TrainList result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
-  expect(screen.queryByRole('button', { name: '查买短乘长' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '买短乘长' })).toBeNull();
 });
 
-test('TrainList：无票车显示「查买短乘长」按钮', () => {
+test('TrainList：无票车显示「买短乘长」按钮', () => {
   render(
     <TrainList
       result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
       {...priceProps}
     />,
   );
-  expect(screen.getByRole('button', { name: '查买短乘长' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '买短乘长' })).toBeTruthy();
 });
 
-test('TrainList：点「查买短乘长」传车次与键', () => {
+test('TrainList：点「买短乘长」传车次与键', () => {
   const onQueryBuyShort = vi.fn();
   render(
     <TrainList
@@ -163,7 +163,7 @@ test('TrainList：点「查买短乘长」传车次与键', () => {
       onQueryBuyShort={onQueryBuyShort}
     />,
   );
-  screen.getByRole('button', { name: '查买短乘长' }).click();
+  screen.getByRole('button', { name: '买短乘长' }).click();
   expect(onQueryBuyShort).toHaveBeenCalledWith(expect.objectContaining({ trainNo: '1' }), '1');
 });
 
@@ -181,7 +181,7 @@ test('TrainList：查询中显示进度文案', () => {
     />,
   );
   expect(screen.getByText(/已查 3 站，均无票/)).toBeTruthy();
-  expect(screen.queryByRole('button', { name: '查买短乘长' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '买短乘长' })).toBeNull();
 });
 
 test('TrainList：命中时显示完整句与风险提示', () => {
@@ -242,5 +242,5 @@ test('TrainList：普速车硬座无票也显示买短乘长入口', () => {
     ],
   });
   render(<TrainList result={{ trains: [t], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
-  expect(screen.getByRole('button', { name: '查买短乘长' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '买短乘长' })).toBeTruthy();
 });

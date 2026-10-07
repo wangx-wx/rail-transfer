@@ -55,62 +55,48 @@ const SEAT_COLOR: Record<SeatState, string> = {
 const HINT_STYLE: React.CSSProperties = { color: 'rgba(0,0,0,.45)', fontSize: 13 };
 
 /**
- * 买短乘长区块（D45~D53）——挂在无票车卡片内。
+ * 买短乘长结果区（D45~D53）——未查时不渲染，挂在卡片下方。
  *
- * 未查：显示「查买短乘长」按钮（手动懒加载，D48）
  * 查询中：显示「查询中… 已查 N 站，均无票」（D53）
  * 命中：完整句 + 一行灰色风险提示（D51/Q23）
  * 无结果：灰字（D52）
  */
-function BuyShortBlock({
-  train,
-  trainKey,
-  date,
+function BuyShortResultArea({
   state,
   result,
   loading,
   progress,
-  onQuery,
 }: {
-  train: Train;
-  trainKey: string;
-  date: string;
   state: { from: string; to: string };
   result: BuyShortResult | undefined;
   loading: boolean;
   progress: number | undefined;
-  onQuery: (train: Train, key: string) => void;
 }) {
+  if (!loading && !result) return null;
   const priceText = result?.kind === 'found' && result.price != null ? `¥${result.price}` : '有票';
 
   return (
-    <div style={{ marginTop: 4 }}>
+    <div style={{ marginTop: 6 }}>
       {loading ? (
         <Typography.Text style={HINT_STYLE}>
           查询中… 已查 {progress ?? 0} 站，均无票
         </Typography.Text>
-      ) : result ? (
-        result.kind === 'found' ? (
-          <div>
-            <Typography.Text>
-              <Typography.Text type="success" strong>
-                买短乘长
-              </Typography.Text>
-              ：买「{state.from} → {result.stationName}」{result.seatName} {priceText}，上车后补票至 {state.to}
+      ) : result?.kind === 'found' ? (
+        <div>
+          <Typography.Text>
+            <Typography.Text type="success" strong>
+              买短乘长
             </Typography.Text>
-            <div style={HINT_STYLE}>需车上补票，超员时可能被要求下车</div>
-          </div>
-        ) : result.kind === 'noCandidate' ? (
-          <Typography.Text style={HINT_STYLE}>该车无中途可买站</Typography.Text>
-        ) : result.kind === 'error' ? (
-          <Typography.Text style={HINT_STYLE}>查询失败：{result.error}</Typography.Text>
-        ) : (
-          <Typography.Text style={HINT_STYLE}>该车沿途各站均无票</Typography.Text>
-        )
+            ：买「{state.from} → {result.stationName}」{result.seatName} {priceText}，上车后补票至 {state.to}
+          </Typography.Text>
+          <div style={HINT_STYLE}>需车上补票，超员时可能被要求下车</div>
+        </div>
+      ) : result?.kind === 'noCandidate' ? (
+        <Typography.Text style={HINT_STYLE}>该车无中途可买站</Typography.Text>
+      ) : result?.kind === 'error' ? (
+        <Typography.Text style={HINT_STYLE}>查询失败：{result.error}</Typography.Text>
       ) : (
-        <Button size="small" type="link" onClick={() => onQuery(train, trainKey)}>
-          查买短乘长
-        </Button>
+        <Typography.Text style={HINT_STYLE}>该车沿途各站均无票</Typography.Text>
       )}
     </div>
   );
@@ -200,18 +186,26 @@ export default function TrainList({
                   查价
                 </Button>
               )}
+
+              {/* 买短乘长入口（仅无票车，D45）——放「查价」旁；查到结果后按钮隐去，结果在下方 */}
+              {soldOut && !buyShort[bsKey] && (
+                <Button
+                  size="small"
+                  type="link"
+                  loading={buyShortLoading.has(bsKey)}
+                  onClick={() => onQueryBuyShort(t, bsKey)}
+                >
+                  买短乘长
+                </Button>
+              )}
             </Space>
 
             {soldOut && (
-              <BuyShortBlock
-                train={t}
-                trainKey={bsKey}
-                date={date}
+              <BuyShortResultArea
                 state={{ from, to }}
                 result={buyShort[bsKey]}
                 loading={buyShortLoading.has(bsKey)}
                 progress={buyShortProgress[bsKey]}
-                onQuery={onQueryBuyShort}
               />
             )}
           </Card>
