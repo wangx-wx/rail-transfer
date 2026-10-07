@@ -4,7 +4,7 @@
  * 城市名 → 代表站码 + 该城市的全部车站码。
  */
 
-import { CITY_STATIONS, ALL_CITIES } from '../data/stations.ts';
+import { CITY_STATIONS, ALL_CITIES, STATION_NAMES } from '../data/stations.ts';
 
 /** 解析后的城市 */
 export interface ResolvedCity {
@@ -26,6 +26,26 @@ export function resolveCity(name: string): ResolvedCity | null {
   if (major) return { code: major.code, stations: major.stations };
   const code = (ALL_CITIES as Record<string, string | undefined>)[n];
   return code ? { code, stations: [code] } : null;
+}
+
+/**
+ * 站名 → 站码（买短乘长用：经停响应只给站名，查票需站码）。
+ *
+ * ⚠️ 经停响应的站名**可能是城市名**（实测 G568 始发显示「广州」，实际是
+ * 广州南 `IZQ`）。此处返回 `STATION_NAMES` 里的**同名站**（若存在），
+ * 不做城市展开——买短乘长的候选站由**站序**定位，此处只负责最后的
+ * 站名→码转换。查不到返回 null。
+ */
+export function codeOfStation(name: string): ResolvedCity | null {
+  const n = (name || '').trim();
+  if (!n) return null;
+  // 主城市表里若有同名站（如「北京」→BJP），优先
+  const major = (CITY_STATIONS as Record<string, { code: string } | undefined>)[n];
+  if (major) return { code: major.code, stations: [major.code] };
+  for (const [code, stationName] of Object.entries(STATION_NAMES as Record<string, string>)) {
+    if (stationName === n) return { code, stations: [code] };
+  }
+  return null;
 }
 
 /** 全部可选城市名（供联想下拉使用，已去重） */

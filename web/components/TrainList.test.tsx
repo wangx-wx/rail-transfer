@@ -34,6 +34,10 @@ const priceProps = {
   prices: {} as Record<string, Record<string, number>>,
   loadingPrice: new Set<string>(),
   onQueryPrice: vi.fn(),
+  buyShort: {} as Record<string, import('../lib/buyshort.ts').BuyShortResult>,
+  buyShortLoading: new Set<string>(),
+  buyShortProgress: {} as Record<string, number>,
+  onQueryBuyShort: vi.fn(),
 };
 
 test('TrainList：空列表显示提示', () => {
@@ -121,4 +125,122 @@ test('TrainList：点「查价」触发回调（传车次与站序）', () => {
   );
   screen.getByRole('button', { name: '查价' }).click();
   expect(onQueryPrice).toHaveBeenCalledWith('1', '01', '02', '2026-10-07', '9MOO');
+});
+
+// ── 买短乘长（D45~D53）──────────────────────────────────
+/** 二等座无票的车 */
+function soldOutTrain(over: Partial<Train> = {}): Train {
+  return train({
+    seats: [
+      { code: 'ZE', name: '二等座', available: false, count: null, raw: '无' },
+      { code: 'ZY', name: '一等座', available: true, count: null, raw: '有' },
+    ],
+    ...over,
+  });
+}
+
+test('TrainList：有票车不显示买短乘长入口', () => {
+  render(<TrainList result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
+  expect(screen.queryByRole('button', { name: '查买短乘长' })).toBeNull();
+});
+
+test('TrainList：无票车显示「查买短乘长」按钮', () => {
+  render(
+    <TrainList
+      result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+    />,
+  );
+  expect(screen.getByRole('button', { name: '查买短乘长' })).toBeTruthy();
+});
+
+test('TrainList：点「查买短乘长」传车次与键', () => {
+  const onQueryBuyShort = vi.fn();
+  render(
+    <TrainList
+      result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+      onQueryBuyShort={onQueryBuyShort}
+    />,
+  );
+  screen.getByRole('button', { name: '查买短乘长' }).click();
+  expect(onQueryBuyShort).toHaveBeenCalledWith(expect.objectContaining({ trainNo: '1' }), '1');
+});
+
+test('TrainList：查询中显示进度文案', () => {
+  render(
+    <TrainList
+      result={{
+        trains: [soldOutTrain()],
+        stationMap: { VNP: '北京南', AOH: '上海虹桥' },
+        date: '2026-10-07',
+      }}
+      {...priceProps}
+      buyShortLoading={new Set(['1'])}
+      buyShortProgress={{ '1': 3 }}
+    />,
+  );
+  expect(screen.getByText(/已查 3 站，均无票/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '查买短乘长' })).toBeNull();
+});
+
+test('TrainList：命中时显示完整句与风险提示', () => {
+  render(
+    <TrainList
+      result={{
+        trains: [soldOutTrain()],
+        stationMap: { VNP: '北京南', AOH: '上海虹桥' },
+        date: '2026-10-07',
+      }}
+      {...priceProps}
+      buyShort={{ '1': { kind: 'found', stationName: '南京南', seatName: '二等座', price: 156 } }}
+    />,
+  );
+  expect(screen.getByText(/买「北京南 → 南京南」二等座 ¥156/)).toBeTruthy();
+  expect(screen.getByText('需车上补票，超员时可能被要求下车')).toBeTruthy();
+});
+
+test('TrainList：命中但无价格 → 显示「有票」', () => {
+  render(
+    <TrainList
+      result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+      buyShort={{ '1': { kind: 'found', stationName: '南京南', seatName: '二等座', price: null } }}
+    />,
+  );
+  expect(screen.getByText(/二等座 有票/)).toBeTruthy();
+});
+
+test('TrainList：沿途无票显示灰字', () => {
+  render(
+    <TrainList
+      result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+      buyShort={{ '1': { kind: 'none' } }}
+    />,
+  );
+  expect(screen.getByText('该车沿途各站均无票')).toBeTruthy();
+});
+
+test('TrainList：无中途站显示灰字', () => {
+  render(
+    <TrainList
+      result={{ trains: [soldOutTrain()], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+      buyShort={{ '1': { kind: 'noCandidate' } }}
+    />,
+  );
+  expect(screen.getByText('该车无中途可买站')).toBeTruthy();
+});
+
+test('TrainList：普速车硬座无票也显示买短乘长入口', () => {
+  const t = soldOutTrain({
+    seatTypes: '1341',
+    seats: [
+      { code: 'ZE', name: '二等座', available: false, count: null, raw: '' },
+      { code: 'YZ', name: '硬座', available: false, count: null, raw: '无' },
+    ],
+  });
+  render(<TrainList result={{ trains: [t], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
+  expect(screen.getByRole('button', { name: '查买短乘长' })).toBeTruthy();
 });

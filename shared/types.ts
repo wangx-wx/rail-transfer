@@ -181,6 +181,18 @@ export interface PriceData {
   [seatCode: string]: unknown;
 }
 
+/** queryByTrainNo（经停站）响应的单项（只标注用到的字段） */
+export interface RawStopoverStation {
+  /** 站名（⚠️ 可能是城市名，如「广州」实为广州南；候选站定位用 station_no 而非此字段） */
+  station_name: string;
+  /** 站序（'01'、'02'…，与 leftTicket 的 from/to_station_no 同源） */
+  station_no: string;
+  /** 到达时刻；始发站为 '----' */
+  arrive_time?: string;
+  /** 发车时刻；终到站为 '----' */
+  start_time?: string;
+}
+
 /** lcquery 的 middleList 原始项（只标注用到的字段） */
 export interface RawMiddleItem {
   from_station_name: string;

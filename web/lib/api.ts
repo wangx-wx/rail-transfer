@@ -9,6 +9,7 @@ import type {
   FetchResult,
   LeftTicketData,
   PriceData,
+  RawStopoverStation,
   SegmentItem,
   TransferData,
   UpstreamEnvelope,
@@ -82,7 +83,10 @@ export interface StopoverQuery {
 }
 
 /** 经停站 */
-export function stopover(p: StopoverQuery, opts?: ApiOpts): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
+export function stopover(
+  p: StopoverQuery,
+  opts?: ApiOpts,
+): Promise<FetchResult<UpstreamEnvelope<{ data?: RawStopoverStation[] }>>> {
   return get(
     '/api/stopover',
     { train_no: p.trainNo, from_station_no: p.fromStationNo, to_station_no: p.toStationNo, date: p.date },

@@ -11,6 +11,8 @@ import { Layout, Typography } from 'antd';
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
 import { runQuery } from './lib/orchestrate.ts';
+import { findShortTicket } from './lib/buyshort.ts';
+import type { BuyShortResult } from './lib/buyshort.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
 import { processPlans } from './lib/plans.ts';
 import { priceKey } from './lib/view.ts';
@@ -55,6 +57,12 @@ export default function App() {
   // 当前查询日期（传给列表用于查价）
   const [queryDate, setQueryDate] = useState('');
 
+  // 买短乘长：车次键 → 结果；正在查的车次键；进行中的进度（已查站数）
+  const [buyShort, setBuyShort] = useState<Record<string, BuyShortResult>>({});
+  const [buyShortLoading, setBuyShortLoading] = useState<Set<string>>(new Set());
+  const [buyShortProgress, setBuyShortProgress] = useState<Record<string, number>>({});
+
+
   /**
    * 查一段行程的各席别价格（1 次请求）。
    * 已在缓存或查过则跳过。直达车次与中转每程共用。
@@ -95,6 +103,37 @@ export default function App() {
     [prices, loadingPrice],
   );
 
+  /**
+   * 查一趟车的买短乘长（D45/D48 手动懒加载）。
+   * 车次键 = 车次编号（同一查询内唯一标识一趟车），结果就地挂在该卡片上。
+   */
+  const fetchBuyShort = useCallback(
+    async (train: Train, key: string) => {
+      const ctx = ctxRef.current;
+      if (!ctx || buyShortLoading.has(key)) return;
+
+      setBuyShortLoading((prev) => new Set(prev).add(key));
+      setBuyShortProgress((prev) => ({ ...prev, [key]: 0 }));
+      try {
+        const result = await findShortTicket(train, queryDate, {
+          stopover: (p) => api.stopover(p, { token: ctx.token, base: API_BASE }),
+          leftTicket: (p) => api.leftTicket(p, { token: ctx.token, base: API_BASE }),
+          price: (p) => api.price(p, { token: ctx.token, base: API_BASE }),
+        }, {
+          onProgress: (checked) => setBuyShortProgress((prev) => ({ ...prev, [key]: checked })),
+        });
+        setBuyShort((prev) => ({ ...prev, [key]: result }));
+      } finally {
+        setBuyShortLoading((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [buyShortLoading, queryDate],
+  );
+
   /** 查直达 */
   async function onDirect(ctx: QueryContext): Promise<void> {
     if (runningRef.current) return;
@@ -105,6 +144,8 @@ export default function App() {
     setView('direct');
     setDirect(null);
     setPrices({});
+    setBuyShort({});
+    setBuyShortProgress({});
     setStatus({ text: '正在查询直达…', kind: 'info' });
 
     try {
@@ -209,7 +250,16 @@ export default function App() {
         <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} />
         <StatusBar text={status.text} kind={status.kind} />
         {view === 'direct' && (
-          <TrainList result={direct} prices={prices} loadingPrice={loadingPrice} onQueryPrice={fetchPrice} />
+          <TrainList
+            result={direct}
+            prices={prices}
+            loadingPrice={loadingPrice}
+            onQueryPrice={fetchPrice}
+            buyShort={buyShort}
+            buyShortLoading={buyShortLoading}
+            buyShortProgress={buyShortProgress}
+            onQueryBuyShort={fetchBuyShort}
+          />
         )}
         {view === 'transfer' && (
           <TransferList
