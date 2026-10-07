@@ -7,7 +7,8 @@
  */
 
 import { SEAT_CODE_NAME } from '../../shared/constants.ts';
-import type { PlanFlags, PlanGroup } from '../../shared/types.ts';
+import type { AnnotatedPlan, PlanFlags, PlanGroup } from '../../shared/types.ts';
+import { mergePlans, sortPlans } from './plans.ts';
 
 /** 中转每程的席别编码 → 中文名 */
 export const LEG_SEAT_NAMES: Record<string, string> = {
@@ -85,15 +86,15 @@ export function waitSeverity(f: PlanFlags): 'warn' | 'dim' | '' {
 
 /** 按换乘枢纽分组（D28），返回 [枢纽名, 该枢纽的方案列表] */
 export function groupByHub(groups: PlanGroup[]): Array<[hub: string, list: PlanGroup[]]> {
-  const byHub = new Map<string, PlanGroup[]>();
+  const byHub = new Map<string, AnnotatedPlan[]>();
   for (const g of groups) {
-    for (const ms of g.middleStations) {
-      const list = byHub.get(ms.name);
-      if (list) list.push(g);
-      else byHub.set(ms.name, [g]);
+    for (const p of g.plans) {
+      const list = byHub.get(p.middleStation);
+      if (list) list.push(p);
+      else byHub.set(p.middleStation, [p]);
     }
   }
-  return [...byHub.entries()];
+  return [...byHub.entries()].map(([hub, plans]) => [hub, sortPlans(mergePlans(plans))]);
 }
 
 /**

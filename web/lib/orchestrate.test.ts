@@ -47,9 +47,10 @@ function mockApi({ baselineHubs = [], failSegments = [] }: { baselineHubs?: stri
     },
     async transfer(p) {
       calls.transfer.push({ hubs: p.hubs });
-      const isBaseline = p.hubs.length === 1 && p.hubs[0] === '';
+      const isBaseline = p.hubs.length === 0;
       if (isBaseline) {
         return {
+          ok: true,
           items: [
             { key: '', ok: true, data: { data: { middleStationList: baselineHubs } } as UpstreamEnvelope<TransferData> },
           ],
@@ -60,7 +61,7 @@ function mockApi({ baselineHubs = [], failSegments = [] }: { baselineHubs?: stri
           ? { key: h, ok: false, error: '被拦截：302 → error.html' }
           : { key: h, ok: true, data: { data: { middleList: [] } } as UpstreamEnvelope<TransferData> },
       );
-      return { items };
+      return { ok: true, items };
     },
   };
 }
@@ -69,7 +70,7 @@ test('runQuery：先查直达，再查基线', async () => {
   const api = mockApi({ baselineHubs: ['BME#白马北'] });
   await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {});
   expect(api.calls.leftTicket).toHaveLength(1);
-  expect(api.calls.transfer[0]!.hubs[0]).toBe(''); // 基线第一
+  expect(api.calls.transfer[0]!.hubs).toEqual([]); // 基线第一
 });
 
 test('runQuery：回调顺序 —— onDirect → onBaseline → onSegment', async () => {
@@ -108,10 +109,57 @@ test('runQuery：某段真错误 → 该段 error，其余段照常（T13）', a
   });
   const bad = segments.find((s) => s.hubs.includes('UUH'))!;
   expect(bad.items.find((x) => x.key === 'UUH')!.error).toMatch(/error\.html/);
+  expect(bad.error).toMatch(/UUH.*error\.html/);
   // 其余段正常
   expect(
     segments.some((s) => s.hubs.some((h) => h !== 'UUH' && s.items.find((x) => x.key === h)?.ok)),
   ).toBe(true);
+});
+
+test('runQuery：API 返回 ok:false 时基线和各段均保留失败原因', async () => {
+  const api = mockApi();
+  api.transfer = async () => ({ ok: false, error: '口令错误' });
+  const segments: SegmentResult[] = [];
+  await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
+    onBaseline: (b) => {
+      expect(b.ok).toBe(false);
+      expect(b.error).toBe('口令错误');
+    },
+    onSegment: (s) => segments.push(s),
+  });
+  expect(segments.length).toBeGreaterThan(0);
+  expect(segments.every((s) => s.error === '口令错误')).toBe(true);
+});
+
+test('runQuery：基线单项失败不伪装为成功，后续成功空结果不算失败', async () => {
+  const api = mockApi();
+  const original = api.transfer;
+  api.transfer = async (p) => p.hubs.length === 0 || p.hubs[0] === ''
+    ? { ok: true, items: [{ key: '', ok: false, error: 'HTTP 503' }] }
+    : original(p);
+  const result = await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api, {
+    onBaseline: (b) => {
+      expect(b.ok).toBe(false);
+      expect(b.error).toContain('HTTP 503');
+    },
+  });
+  expect(result.segments.every((s) => s.error === null)).toBe(true);
+});
+
+test('runQuery：整段请求抛错保留 error，并继续后续段', async () => {
+  const api = mockApi();
+  const original = api.transfer;
+  let failed = false;
+  api.transfer = async (p) => {
+    if (p.hubs.length > 1 && !failed) {
+      failed = true;
+      throw new Error('网络连接失败');
+    }
+    return original(p);
+  };
+  const result = await runQuery({ from: 'VNP', to: 'AOH', date: '2026-10-07' }, api);
+  expect(result.segments[0]!.error).toContain('网络连接失败');
+  expect(result.segments.slice(1).every((s) => s.error === null)).toBe(true);
 });
 
 test('runQuery：基线失败不阻断后续枚举', async () => {
@@ -120,8 +168,8 @@ test('runQuery：基线失败不阻断后续枚举', async () => {
       return { ok: true, data: { data: { result: [] } } };
     },
     async transfer(p) {
-      if (p.hubs[0] === '') throw new Error('baseline down');
-      return { items: p.hubs.map((h) => ({ key: h, ok: true, data: { data: {} } })) };
+      if (p.hubs.length === 0) throw new Error('baseline down');
+      return { ok: true, items: p.hubs.map((h) => ({ key: h, ok: true, data: { data: {} } })) };
     },
   };
   const segments: SegmentResult[] = [];

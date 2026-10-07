@@ -195,30 +195,37 @@ export default function App() {
         {
           onDirect: () => {}, // 中转查询不展示直达
           onBaseline: (r) => {
-            if (!r.ok) {
-              setStatus({ text: '官方基线查询失败，改用内置枢纽兜底…', kind: 'warn' });
-              return;
-            }
             for (const item of r.items) {
               if (item.ok && item.data) plansRef.current.push(...parseTransfer(item.data).plans);
             }
             refresh();
+            if (!r.ok) {
+              setStatus({ text: `官方基线查询失败：${r.error}，改用内置枢纽兜底…`, kind: 'warn' });
+            }
           },
           onSegment: (s) => {
             for (const item of s.items) {
               if (item.ok && item.data) plansRef.current.push(...parseTransfer(item.data).plans);
             }
-            const failed = s.items.filter((i) => !i.ok).length;
             refresh();
             setStatus({
               text:
                 `已查 ${s.index + 1}/${s.total} 段，累计 ${plansRef.current.length} 条方案` +
-                (failed ? `（${failed} 个枢纽失败）` : ''),
-              kind: failed ? 'warn' : 'info',
+                (s.error ? `（查询失败：${s.error}）` : ''),
+              kind: s.error ? 'warn' : 'info',
             });
           },
-          onDone: () => {
-            setStatus({ text: `完成：中转 ${plansRef.current.length} 条方案`, kind: 'info' });
+          onDone: ({ baseline, segments }) => {
+            const errors = [
+              ...(!baseline.ok ? [`官方基线：${baseline.error}`] : []),
+              ...segments.filter((s) => s.error).map((s) => `第 ${s.index + 1} 段：${s.error}`),
+            ];
+            const hasSuccess = baseline.items.some((item) => item.ok) ||
+              segments.some((s) => s.items.some((item) => item.ok));
+            setStatus(errors.length ? {
+              text: `${hasSuccess ? '查询部分完成' : '中转查询失败'}：中转 ${plansRef.current.length} 条方案；${errors.join('；')}`,
+              kind: hasSuccess ? 'warn' : 'error',
+            } : { text: `完成：中转 ${plansRef.current.length} 条方案`, kind: 'info' });
             // 自动查最优一条的两程价格（D21）
             const best = processPlans(plansRef.current)[0]?.best;
             for (const leg of best?.legs ?? []) {

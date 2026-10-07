@@ -20,14 +20,12 @@ import type {
   UpstreamEnvelope,
 } from '../../shared/types.ts';
 import { extractHubCodes } from './parse.ts';
+import type { TransferResponse } from './api.ts';
 
 /** 编排所需的最小 API 接口（便于测试注入） */
 export interface QueryApi {
   leftTicket(p: { from: string; to: string; date: string }): Promise<FetchResult<UpstreamEnvelope<LeftTicketData>>>;
-  transfer(p: { from: string; to: string; date: string; hubs: string[] }): Promise<{
-    ok?: boolean;
-    items?: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
-  }>;
+  transfer(p: { from: string; to: string; date: string; hubs: string[] }): Promise<TransferResponse>;
 }
 
 /** 一次查询的参数 */
@@ -48,16 +46,33 @@ export interface SegmentResult {
   error: string | null;
 }
 
+export interface BaselineResult {
+  ok: boolean;
+  items: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
+  error?: string;
+}
+
+export interface QueryResult {
+  hubs: string[];
+  baseline: BaselineResult;
+  segments: SegmentResult[];
+}
+
 /** 回调集合 */
 export interface RunQueryHooks {
   onDirect?: (r: FetchResult<UpstreamEnvelope<LeftTicketData>>) => void;
-  onBaseline?: (r: {
-    ok: boolean;
-    items: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
-    error?: string;
-  }) => void;
+  onBaseline?: (r: BaselineResult) => void;
   onSegment?: (r: SegmentResult) => void;
-  onDone?: (r: { hubs: string[]; segments: SegmentResult[] }) => void;
+  onDone?: (r: QueryResult) => void;
+}
+
+/** 区分整次请求失败与单个枢纽失败，成功的空 data 不算错误。 */
+function transferError(r: TransferResponse): string | null {
+  if (!r.ok) return r.error ?? '中转查询失败';
+  const errors = (r.items ?? [])
+    .filter((item) => !item.ok)
+    .map((item) => `${item.key || '官方基线'}：${item.error ?? '查询失败'}`);
+  return errors.length ? errors.join('；') : null;
 }
 
 /** 把枢纽切成每段 N 个。 */
@@ -84,7 +99,7 @@ export async function runQuery(
   p: RunQueryParams,
   api: QueryApi,
   hooks: RunQueryHooks = {},
-): Promise<{ hubs: string[]; segments: SegmentResult[] }> {
+): Promise<QueryResult> {
   const { from, to, date } = p;
 
   // ── 段 A：直达 ──────────────────────────────────────
@@ -97,14 +112,11 @@ export async function runQuery(
   hooks.onDirect?.(direct);
 
   // ── 段 A：官方基线（拿候选枢纽种子）─────────────────
-  let baseline: {
-    ok: boolean;
-    items: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
-    error?: string;
-  };
+  let baseline: BaselineResult;
   try {
-    const r = await api.transfer({ from, to, date, hubs: [''] });
-    baseline = { ok: true, items: r.items ?? [] };
+    const r = await api.transfer({ from, to, date, hubs: [] });
+    const error = transferError(r);
+    baseline = { ok: !error, items: r.items ?? [], ...(error ? { error } : {}) };
   } catch (e) {
     baseline = { ok: false, items: [], error: String(e) };
   }
@@ -128,7 +140,7 @@ export async function runQuery(
     let res: SegmentResult;
     try {
       const r = await api.transfer({ from, to, date, hubs: chunk });
-      res = { index: i, total: segments.length, hubs: chunk, items: r.items ?? [], error: null };
+      res = { index: i, total: segments.length, hubs: chunk, items: r.items ?? [], error: transferError(r) };
     } catch (e) {
       res = { index: i, total: segments.length, hubs: chunk, items: [], error: String(e) };
     }
@@ -136,7 +148,7 @@ export async function runQuery(
     hooks.onSegment?.(res);
   }
 
-  const done = { hubs, segments: results };
+  const done = { hubs, baseline, segments: results };
   hooks.onDone?.(done);
   return done;
 }

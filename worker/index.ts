@@ -72,7 +72,7 @@ const ROUTES: Record<string, RouteHandler> = {
       from: req(q, 'from'),
       to: req(q, 'to'),
       date: req(q, 'date'),
-      hubs,
+      hubs: hubs.length ? hubs : [''],
       ...deps,
     });
     return { ok: true, items };

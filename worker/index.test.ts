@@ -112,6 +112,19 @@ test('配置了 ACCESS_TOKEN 且口令正确 → 放行', async () => {
 });
 
 // ── /api/transfer 扇出 ───────────────────────────────────
+test.each(['', '&hubs='])('/api/transfer：未指定枢纽 %s 时查询一次官方基线', async (hubs) => {
+  const f = okFetch();
+  const res = await handleRequest(
+    req(`/api/transfer?from=VNP&to=AOH&date=2026-10-07${hubs}`),
+    {},
+    { fetchImpl: f, cache: fakeCache() },
+  );
+  const body = await res.json() as { items: Array<{ key: string; ok: boolean }> };
+  expect(f.calls).toHaveLength(1);
+  expect(new URL(f.calls[0]!.url).searchParams.get('middle_station')).toBe('');
+  expect(body.items).toEqual([expect.objectContaining({ key: '', ok: true })]);
+});
+
 test('/api/transfer：hubs 扇出为多项结果', async () => {
   const f = okFetch();
   const res = await handleRequest(

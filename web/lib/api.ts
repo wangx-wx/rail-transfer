@@ -66,7 +66,8 @@ export interface TransferQuery {
 /** 中转扇出结果 */
 export interface TransferResponse {
   ok: boolean;
-  items: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
+  items?: Array<SegmentItem<UpstreamEnvelope<TransferData>>>;
+  error?: string;
 }
 
 /** 查询中转（扇出）。hubs 为空数组时 = 官方默认 Top-N 基线。 */

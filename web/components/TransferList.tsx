@@ -22,7 +22,7 @@ import {
   durationLabel,
 } from '../lib/view.ts';
 import type { FlagKind, SeatState } from '../lib/view.ts';
-import type { PlanGroup, TransferLeg } from '../../shared/types.ts';
+import type { AnnotatedPlan, PlanGroup, TransferLeg } from '../../shared/types.ts';
 
 interface Props {
   groups: PlanGroup[];
@@ -133,16 +133,15 @@ function Leg({
 
 /** 单个中转方案卡片 */
 function TransferCard({
-  group,
+  plan: p,
   date,
   prices,
   loadingPrice,
   onQueryPrice,
-}: { group: PlanGroup; date: string } & Pick<
+}: { plan: AnnotatedPlan; date: string } & Pick<
   Props,
   'prices' | 'loadingPrice' | 'onQueryPrice'
 >) {
-  const p = group.best;
   const flags = planFlags(p.flags);
   const severity = waitSeverity(p.flags);
   const waitColor = severity === 'warn' ? 'warning' : severity === 'dim' ? 'default' : 'blue';
@@ -219,6 +218,17 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
 
   if (!groups.length) return <Empty description="没有中转方案" />;
 
+  const renderCard = (plan: AnnotatedPlan, index: number) => (
+    <TransferCard
+      key={index}
+      plan={plan}
+      date={date}
+      prices={prices}
+      loadingPrice={loadingPrice}
+      onQueryPrice={onQueryPrice}
+    />
+  );
+
   const items = hubGroups.map(([hub, list]) => ({
     key: hub,
     label: (
@@ -228,14 +238,20 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
       </Space>
     ),
     children: list.map((g) => (
-      <TransferCard
-        key={`${g.firstTrainCode}-${g.secondTrainCode}-${g.middleStations.map((m) => m.name).join('/')}`}
-        group={g}
-        date={date}
-        prices={prices}
-        loadingPrice={loadingPrice}
-        onQueryPrice={onQueryPrice}
-      />
+      <div key={`${g.firstTrainCode}-${g.secondTrainCode}`}>
+        {renderCard(g.best, 0)}
+        {g.plans.length > 1 && (
+          <Collapse
+            size="small"
+            style={{ marginBottom: 10 }}
+            items={[{
+              key: 'alternatives',
+              label: `同车次其他方案（${g.plans.length - 1}）`,
+              children: g.plans.filter((p) => p !== g.best).map(renderCard),
+            }]}
+          />
+        )}
+      </div>
     )),
   }));
 

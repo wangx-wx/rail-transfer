@@ -137,6 +137,8 @@ export interface PlanGroup {
   secondTrainNo: string;
   /** 该组合涉及的所有换乘站 */
   middleStations: Array<{ name: string; waitMinutes: number; sameStation: boolean }>;
+  /** 去除重复响应后的完整行程，供各枢纽展示与展开详情 */
+  plans: AnnotatedPlan[];
   /** 代表项（总耗时最小） */
   best: AnnotatedPlan;
   /** 合并了多少条方案 */

@@ -3,7 +3,7 @@
  */
 
 import { test, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import TransferList from './TransferList.tsx';
 import { annotatePlans, mergePlans } from '../lib/plans.ts';
@@ -62,6 +62,47 @@ test('TransferList：展示两程车次与换乘等待', () => {
   expect(screen.getByText('G2')).toBeTruthy();
   expect(screen.getByText(/换乘 南京南/)).toBeTruthy();
   expect(screen.getByText('同站')).toBeTruthy();
+});
+
+test('TransferList：同车次在不同枢纽展示对应行程、余票、风险和查价站序', () => {
+  const nanjing = plan({ totalMinutes: 400 });
+  const hangzhou = plan({
+    middleStation: '杭州东', totalMinutes: 380, waitMinutes: 10,
+    legs: [
+      { ...nanjing.legs[0]!, toStation: '杭州东', toStationNo: '06', arriveTime: '09:50', seats: { ZE: '2' } },
+      { ...nanjing.legs[1]!, fromStation: '杭州东', fromStationNo: '02', startTime: '10:00' },
+    ],
+  });
+  const onQueryPrice = vi.fn();
+  render(<TransferList groups={groups([nanjing, hangzhou])} {...priceProps} onQueryPrice={onQueryPrice} />);
+  expect(screen.getByText(/换乘 南京南.*等待 30分/)).toBeTruthy();
+  expect(screen.getByText(/换乘 杭州东.*等待 10分/)).toBeTruthy();
+  expect(screen.getByText('总耗时 6时40分')).toBeTruthy();
+  expect(screen.getByText('总耗时 6时20分')).toBeTruthy();
+  expect(screen.getByText('二等座 2 张')).toBeTruthy();
+  expect(screen.getAllByText('低于换乘下限')).toHaveLength(1);
+  const buttons = screen.getAllByRole('button', { name: '查价' });
+  buttons.forEach((button) => fireEvent.click(button));
+  expect(onQueryPrice.mock.calls).toEqual([
+    ['1', '01', '05', '2026-10-07', 'POMO'],
+    ['2', '01', '04', '2026-10-07', 'POMO'],
+    ['1', '01', '06', '2026-10-07', 'POMO'],
+    ['2', '02', '04', '2026-10-07', 'POMO'],
+  ]);
+});
+
+test('TransferList：同枢纽同车次的其他行程可展开，重复响应不生成额外详情', () => {
+  const original = plan();
+  const alternative = plan({
+    fromStation: '北京', totalMinutes: 400,
+    legs: [{ ...original.legs[0]!, fromStation: '北京', fromStationNo: '00' }, original.legs[1]!],
+  });
+  render(<TransferList groups={groups([original, alternative, structuredClone(original)])} {...priceProps} />);
+  expect(screen.getByText('北京南 → 上海虹桥')).toBeTruthy();
+  expect(screen.queryByText('北京 → 上海虹桥')).toBeNull();
+  fireEvent.click(screen.getByText('同车次其他方案（1）'));
+  expect(screen.getByText('北京 → 上海虹桥')).toBeTruthy();
+  expect(screen.getAllByText('北京南 → 上海虹桥')).toHaveLength(1);
 });
 
 test('TransferList：同城异站标签', () => {

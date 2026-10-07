@@ -101,6 +101,23 @@ test('groupByHub：空输入 → 空数组', () => {
   expect(groupByHub([])).toEqual([]);
 });
 
+test('groupByHub：各枢纽只保留本站行程，按本站方案耗时排序', () => {
+  const plans = annotatePlans([
+    plan({ middleStation: '南京南', totalMinutes: 400, waitMinutes: 40 }),
+    plan({ middleStation: '杭州东', totalMinutes: 300, waitMinutes: 10 }),
+    plan({ middleStation: '南京南', totalMinutes: 350, firstTrainCode: 'G3' }),
+  ]);
+  const merged = mergePlans(plans);
+  const byHub = new Map(groupByHub(merged));
+  const nanjing = byHub.get('南京南')!;
+  expect(nanjing.map((g) => g.firstTrainCode)).toEqual(['G3', 'G1']);
+  expect(nanjing[1]!.best).toBe(plans[0]);
+  expect(nanjing[1]!.plans).toEqual([plans[0]]);
+  expect(nanjing[1]!.middleStations.map((m) => m.name)).toEqual(['南京南']);
+  expect(byHub.get('杭州东')![0]!.best).toBe(plans[1]);
+  expect(merged[0]!.best).toBe(plans[1]); // 视图分组不修改全局代表项
+});
+
 // ── priceLabel ───────────────────────────────────────────
 test('priceLabel：整数不带小数，非整数保留一位', () => {
   expect(priceLabel(626)).toBe('¥626');

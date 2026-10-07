@@ -4,9 +4,11 @@
  */
 
 import { test, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import { annotatePlan, annotatePlans, mergePlans, sortPlans, processPlans } from './plans.ts';
-import type { TransferPlan } from '../../shared/types.ts';
+import { parseTransfer } from './parse.ts';
+import type { TransferData, TransferPlan, UpstreamEnvelope } from '../../shared/types.ts';
 
 /** 造一个最小方案 */
 function mk(over: Partial<TransferPlan> = {}): TransferPlan {
@@ -51,8 +53,31 @@ test('annotatePlan：超过 120 分 → longWait', () => {
   expect(annotatePlan(mk({ waitMinutes: 120 })).flags.longWait).toBe(false);
 });
 
-test('annotatePlan：同车接续透传标记', () => {
-  expect(annotatePlan(mk({ sameTrain: true })).flags.sameTrain).toBe(true);
+test('annotatePlan：真实样本 G8735 同车接续停站 2 分钟不标换乘风险', () => {
+  const raw = JSON.parse(
+    readFileSync(new URL('../../test/fixtures/transfer-10.json', import.meta.url), 'utf8'),
+  ) as UpstreamEnvelope<TransferData>;
+  const plan = parseTransfer(raw).plans.find((p) => p.firstTrainCode === 'G8735')!;
+  expect(plan).toMatchObject({ sameTrain: true, sameStation: true, waitMinutes: 2 });
+  expect(annotatePlan(plan).flags).toEqual({
+    belowMin: false,
+    risky: false,
+    longWait: false,
+    sameTrain: true,
+  });
+});
+
+test('annotatePlan：同车接续停站 17 分钟不标换乘紧张', () => {
+  const flags = annotatePlan(mk({ sameTrain: true, waitMinutes: 17 })).flags;
+  expect(flags.belowMin).toBe(false);
+  expect(flags.risky).toBe(false);
+  expect(flags.sameTrain).toBe(true);
+});
+
+test('annotatePlan：同车接续仍保留超长等待标记', () => {
+  const flags = annotatePlan(mk({ sameTrain: true, waitMinutes: 121 })).flags;
+  expect(flags.longWait).toBe(true);
+  expect(flags.sameTrain).toBe(true);
 });
 
 test('annotatePlans：不删除任何方案（D12）', () => {
@@ -85,6 +110,16 @@ test('mergePlans：重复换乘站不重复计入', () => {
   );
   expect(merged[0]!.count).toBe(2);
   expect(merged[0]!.middleStations).toHaveLength(1);
+});
+
+test('mergePlans：保留各换乘站的完整方案，重复响应不增加行程变体', () => {
+  const nanjing = mk({ middleStation: '南京南', totalMinutes: 400 });
+  const hangzhou = mk({ middleStation: '杭州东', totalMinutes: 380, waitMinutes: 10 });
+  const annotated = annotatePlans([nanjing, hangzhou, structuredClone(nanjing)]);
+  const [group] = mergePlans(annotated);
+  expect(group!.count).toBe(3);
+  expect(group!.plans).toEqual(annotated.slice(0, 2));
+  expect(group!.best).toBe(annotated[1]);
 });
 
 // ── sortPlans（D17）──────────────────────────────────────

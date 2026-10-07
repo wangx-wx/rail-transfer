@@ -25,9 +25,9 @@ export function annotatePlan(plan: TransferPlan): AnnotatedPlan {
     ...plan,
     flags: {
       /** 低于换乘下限（物理上不可行） */
-      belowMin: plan.waitMinutes < minWait,
+      belowMin: !plan.sameTrain && plan.waitMinutes < minWait,
       /** 换乘时间紧，有赶不上的风险 */
-      risky: plan.waitMinutes >= minWait && plan.waitMinutes < RISK_WAIT_THRESHOLD,
+      risky: !plan.sameTrain && plan.waitMinutes >= minWait && plan.waitMinutes < RISK_WAIT_THRESHOLD,
       /** 超长等待，默认折叠 */
       longWait: plan.waitMinutes > LONG_WAIT_THRESHOLD,
       /** 同车接续，无需换乘站台 */
@@ -45,13 +45,14 @@ export function annotatePlans(plans: TransferPlan[]): AnnotatedPlan[] {
  * 视觉合并同一车次组合（D16）。
  *
  * 同一对「显示车次」只占一行，换乘站收进 `middleStations`，
- * 代表项取总耗时最小的那条。**不丢信息**：所有换乘站都保留。
+ * 代表项取总耗时最小的那条，完整行程保留在 `plans`，重复响应只计数。
  *
  * 注：按 `firstTrainCode`（显示车次）合并，不按 `firstTrainNo`（内部编号）——
  * 同车接续时两程内部编号相同，会误合并。
  */
 export function mergePlans(plans: AnnotatedPlan[]): PlanGroup[] {
   const groups = new Map<string, PlanGroup>();
+  const seen = new Set<string>();
   for (const p of plans) {
     const key = `${p.firstTrainCode}|${p.secondTrainCode}`;
     let g = groups.get(key);
@@ -62,12 +63,25 @@ export function mergePlans(plans: AnnotatedPlan[]): PlanGroup[] {
         firstTrainNo: p.firstTrainNo,
         secondTrainNo: p.secondTrainNo,
         middleStations: [],
+        plans: [],
         best: p,
         count: 0,
       };
       groups.set(key, g);
     }
     g.count++;
+    // 基线与指定枢纽可能返回同一行程；站序与时刻区分同车次的不同乘车区段。
+    const planKey = JSON.stringify([
+      key, p.firstTrainNo, p.secondTrainNo, p.fromStation, p.middleStation, p.endStation,
+      p.startTime, p.arriveTime, p.waitMinutes, p.totalMinutes, p.sameStation, p.sameTrain,
+      p.legs.map((leg) => [
+        leg.trainNo, leg.fromStation, leg.toStation, leg.fromStationNo, leg.toStationNo,
+        leg.startTime, leg.arriveTime,
+      ]),
+    ]);
+    if (seen.has(planKey)) continue;
+    seen.add(planKey);
+    g.plans.push(p);
     if (!g.middleStations.some((m) => m.name === p.middleStation)) {
       g.middleStations.push({
         name: p.middleStation,
