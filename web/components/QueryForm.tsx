@@ -120,6 +120,10 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
         <DatePicker placeholder="选择日期" style={{ width: '100%' }} />
       </Form.Item>
 
+      <Form.Item className="query-access" name="token" label="口令">
+        <Input placeholder="可选" autoComplete="off" />
+      </Form.Item>
+
       <div className="query-actions">
         <Button type="primary" htmlType="button" loading={querying} onClick={() => submit(onDirect)}>
           查直达
@@ -128,12 +132,6 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
           查中转
         </Button>
       </div>
-      <details className="query-access">
-        <summary>访问口令（可选）</summary>
-        <Form.Item name="token" label="口令">
-          <Input type="password" placeholder="可选" autoComplete="off" />
-        </Form.Item>
-      </details>
     </Form>
   );
 }

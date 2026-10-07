@@ -17,8 +17,8 @@
 
 .query-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 180px auto;
-  grid-template-areas: "from swap to date actions" "access access access access access";
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 160px 150px auto;
+  grid-template-areas: "from swap to date access actions";
   gap: 16px;
   padding: 22px;
   background: var(--rail-surface);
@@ -31,16 +31,14 @@
 .query-swap { grid-area: swap; padding-top: 30px; }
 .query-swap button { background: var(--rail-page); color: var(--rail-blue); }
 .query-actions { grid-area: actions; display: flex; gap: 10px; align-self: start; padding-top: 30px; }
-.query-access { grid-area: access; border-top: 1px solid var(--rail-line); padding-top: 4px; }
-.query-access summary { color: var(--rail-secondary); font-size: 13px; }
-.query-access > div { max-width: 320px; padding-bottom: 8px; }
-.query-access summary, .journey-details summary {
+.query-access { grid-area: access; }
+.journey-details summary {
   display: flex; justify-content: space-between; align-items: center;
   min-height: 44px; gap: 12px; list-style: none; cursor: pointer;
 }
-.query-access summary::-webkit-details-marker, .journey-details summary::-webkit-details-marker { display: none; }
-.query-access summary::after, .journey-details summary::after { content: '+'; font-size: 18px; }
-.query-access[open] > summary::after, .journey-details[open] > summary::after { content: '−'; }
+.journey-details summary::-webkit-details-marker { display: none; }
+.journey-details summary::after { content: '+'; font-size: 18px; }
+.journey-details[open] > summary::after { content: '−'; }
 
 .train-list { display: grid; min-width: 0; }
 .ticket-card { margin-bottom: 12px; box-shadow: none; min-width: 0; }
@@ -85,8 +83,8 @@
 .leg-tools { display: grid; gap: 6px; min-width: 0; }
 
 @media (max-width: 959px) {
-  .query-form { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 180px; grid-template-areas: "from swap to date" "actions actions actions actions" "access access access access"; }
-  .query-actions { justify-content: flex-end; padding-top: 0; }
+  .query-form { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 180px; grid-template-areas: "from swap to date" "access access actions actions"; }
+  .query-actions { justify-content: flex-end; align-self: end; padding-top: 0; }
   .ticket-main { grid-template-columns: 100px minmax(170px, 1.3fr) minmax(140px, 1fr); gap: 16px; }
   .ticket-main > .ticket-actions { grid-column: 2 / -1; }
   .leg-content { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
@@ -97,7 +95,7 @@
   .app-theme { --card-padding: 16px; }
   .app-shell { padding: 24px 12px; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .app-header h1 { font-size: 26px; }
-  .query-form { padding: 16px; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); grid-template-areas: "from swap to" "date date date" "actions actions actions" "access access access"; gap: 12px 8px; }
+  .query-form { padding: 16px; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); grid-template-areas: "from swap to" "date date date" "access access access" "actions actions actions"; gap: 12px 8px; }
   .query-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
   .query-actions button { width: 100%; }
   .ticket-main { grid-template-columns: minmax(0, 1fr); gap: 14px; }

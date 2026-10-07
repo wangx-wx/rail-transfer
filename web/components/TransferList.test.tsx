@@ -7,6 +7,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import TransferList from './TransferList.tsx';
 import { annotatePlans, mergePlans } from '../lib/plans.ts';
+import { parseTransfer } from '../lib/parse.ts';
+import transferFixture from '../../test/fixtures/transfer-10.json';
 import type { TransferPlan } from '../../shared/types.ts';
 
 function plan(over: Partial<TransferPlan> = {}): TransferPlan {
@@ -50,6 +52,27 @@ const priceProps = {
 test('TransferList：空列表显示提示', () => {
   render(<TransferList groups={[]} {...priceProps} />);
   expect(screen.getByText('没有中转方案')).toBeTruthy();
+});
+
+test('TransferList：完整响应的 10 条方案与 20 程详情均保留', () => {
+  const { plans } = parseTransfer(transferFixture);
+  expect(plans).toHaveLength(10);
+  const { container } = render(<TransferList groups={groups(plans)} {...priceProps} />);
+  expect(container.querySelectorAll('.ticket-card')).toHaveLength(10);
+  expandDetails();
+  expect(container.querySelectorAll('.transfer-leg')).toHaveLength(20);
+  expect([...container.querySelectorAll('.leg-heading strong')].map((node) => node.textContent).sort())
+    .toEqual(plans.flatMap((plan) => plan.legs.map((leg) => leg.trainCode)).sort());
+});
+
+test('TransferList：摘要之外完整保留各席别、始发终到与已查价格', () => {
+  const p = plan();
+  p.legs[0] = { ...p.legs[0]!, startStation: '哈尔滨西', endStation: '深圳北', seats: { ZE: '无', ZY: '有', SWZ: '2', WZ: '无' } };
+  render(<TransferList groups={groups([p])} {...priceProps} prices={{ '1|01|05': { O: 300, M: 450, '9': 900 }, '2|01|04': { O: 280 } }} />);
+  expandDetails();
+  for (const text of ['始发 哈尔滨西 · 终到 深圳北', '一等座 有', '商务座 2 张', '无座 无', '二等座 ¥300', '一等座 ¥450', '商务座 ¥900', '参考价 ¥580']) {
+    expect(screen.getByText(text)).toBeTruthy();
+  }
 });
 
 test('TransferList：按枢纽分组并展示起终点与总耗时', () => {

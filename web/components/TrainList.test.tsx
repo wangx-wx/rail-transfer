@@ -6,6 +6,8 @@ import { test, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import TrainList from './TrainList.tsx';
+import { parseLeftTicket } from '../lib/parse.ts';
+import leftTicketFixture from '../../test/fixtures/left-ticket-55.json';
 import type { Train } from '../../shared/types.ts';
 
 function train(over: Partial<Train> = {}): Train {
@@ -43,6 +45,15 @@ const priceProps = {
 test('TrainList：空列表显示提示', () => {
   render(<TrainList result={{ trains: [], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
   expect(screen.getByText('没有直达车次')).toBeTruthy();
+});
+
+test('TrainList：完整余票响应的 55 趟车均展示，不限制为前三条', () => {
+  const result = parseLeftTicket(leftTicketFixture);
+  expect(result.trains).toHaveLength(55);
+  const { container } = render(<TrainList result={{ ...result, date: '2026-10-07' }} {...priceProps} />);
+  expect(screen.getAllByRole('group', { name: '行程时间' })).toHaveLength(55);
+  expect([...container.querySelectorAll('.train-identity strong')].map((node) => node.textContent))
+    .toEqual(result.trains.map((train) => train.trainCode));
 });
 
 test('TrainList：result 为 null 时不渲染', () => {
