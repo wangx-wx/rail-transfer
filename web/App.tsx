@@ -10,6 +10,14 @@ import { useCallback, useRef, useState } from 'react';
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
 import { runQuery } from './lib/orchestrate.ts';
+import { runSelfBuiltQuery } from './lib/selfbuilt-query.ts';
+import { createSelfBuiltDeps } from './lib/selfbuilt-adapter.ts';
+import { buildHubPool } from './lib/hubs.ts';
+import { parseReachability, type ReachGraph } from './lib/reach.ts';
+import { REACHABILITY_EDGES } from './data/reachability.ts';
+import { cityOfStation } from './lib/city.ts';
+import SelfBuiltList from './components/SelfBuiltList.tsx';
+import type { ScoredJourney } from './lib/selfbuilt.ts';
 import { findShortTicket } from './lib/buyshort.ts';
 import type { BuyShortResult } from './lib/buyshort.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
@@ -25,7 +33,7 @@ import type { PlanGroup, Train, TransferPlan } from '../shared/types.ts';
 import { STATION_NAMES } from './data/stations.ts';
 
 /** 当前展示的结果类型 */
-type View = 'idle' | 'direct' | 'transfer';
+type View = 'idle' | 'direct' | 'transfer' | 'selfbuilt';
 
 /** 直达结果 */
 interface DirectResult {
@@ -41,6 +49,10 @@ export default function App() {
   const [view, setView] = useState<View>('idle');
   const [direct, setDirect] = useState<DirectResult | null>(null);
   const [groups, setGroups] = useState<PlanGroup[]>([]);
+  // 自研中转结果（T46：与 lcquery 通路并存）
+  const [journeys, setJourneys] = useState<ScoredJourney[]>([]);
+  // 离线可达图（T39 产物，内存构建一次）
+  const reachRef = useRef<ReachGraph | null>(null);
 
   // 重入锁：state 更新是异步的，同 tick 双击时 querying 尚未变化，必须用 ref
   const runningRef = useRef(false);
@@ -241,6 +253,51 @@ export default function App() {
     }
   }
 
+  /** 查自研中转（T37~T46，与 lcquery 通路并存） */
+  async function onSelfBuilt(ctx: QueryContext): Promise<void> {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    ctxRef.current = ctx;
+    setQueryDate(ctx.date);
+    setQuerying(true);
+    setView('selfbuilt');
+    setJourneys([]);
+    setPrices({});
+    setStatus({ text: '正在自研枚举中转…', kind: 'info' });
+
+    try {
+      if (!reachRef.current) reachRef.current = parseReachability(REACHABILITY_EDGES);
+      const buildDeps = createSelfBuiltDeps(
+        { from: ctx.from.code, to: ctx.to.code, date: ctx.date, hubs: [], maxTransfers: 1 },
+        { token: ctx.token, base: API_BASE },
+      );
+      const r = await runSelfBuiltQuery(
+        {
+          from: ctx.from.code,
+          to: ctx.to.code,
+          date: ctx.date,
+          hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
+          maxTransfers: ctx.maxTransfers ?? 1,
+          graph: reachRef.current,
+          cityOf: cityOfStation,
+          maxEdges: 60,
+          rateLimit: { concurrency: 3, intervalMs: 300 },
+        },
+        buildDeps,
+      );
+      setJourneys(r.journeys);
+      setStatus({
+        text: `自研中转 ${r.journeys.length} 条方案（扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
+        kind: 'info',
+      });
+    } catch (e) {
+      setStatus({ text: `自研查询出错：${e}`, kind: 'error' });
+    } finally {
+      runningRef.current = false;
+      setQuerying(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -249,8 +306,12 @@ export default function App() {
       </header>
 
       <main>
-        <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} />
-        {view !== 'idle' && <h2 className="results-title">{view === 'direct' ? '直达车次' : '中转方案'}</h2>}
+        <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} onSelfBuilt={onSelfBuilt} />
+        {view !== 'idle' && (
+          <h2 className="results-title">
+            {view === 'direct' ? '直达车次' : view === 'selfbuilt' ? '自研中转方案' : '中转方案'}
+          </h2>
+        )}
         <StatusBar text={status.text} kind={status.kind} />
         {view === 'direct' && (
           <TrainList
@@ -262,6 +323,16 @@ export default function App() {
             buyShortLoading={buyShortLoading}
             buyShortProgress={buyShortProgress}
             onQueryBuyShort={fetchBuyShort}
+          />
+        )}
+        {view === 'selfbuilt' && (
+          <SelfBuiltList
+            journeys={journeys}
+            date={queryDate}
+            stationNames={STATION_NAMES}
+            prices={prices}
+            loadingPrice={loadingPrice}
+            onQueryPrice={fetchPrice}
           />
         )}
         {view === 'transfer' && (

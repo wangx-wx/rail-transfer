@@ -39,9 +39,11 @@ interface Props {
   querying: boolean;
   onDirect: (ctx: QueryContext) => void;
   onTransfer: (ctx: QueryContext) => void;
+  /** 自研中转（T46，与 lcquery 通路并存） */
+  onSelfBuilt: (ctx: QueryContext) => void;
 }
 
-export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
+export default function QueryForm({ querying, onDirect, onTransfer, onSelfBuilt }: Props) {
   const [form] = Form.useForm<FormValues>();
 
   const cityOptions = useMemo(() => allCityNames().map((n) => ({ value: n })), []);
@@ -149,6 +151,9 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
         </Button>
         <Button htmlType="button" loading={querying} onClick={() => submit(onTransfer)}>
           查中转
+        </Button>
+        <Button htmlType="button" loading={querying} onClick={() => submit(onSelfBuilt)}>
+          自研中转
         </Button>
       </div>
     </Form>
