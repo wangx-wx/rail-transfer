@@ -132,7 +132,11 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
   async function go(legs: Train[], transfers: JourneyTransfer[], arrAbs: number, visited: Set<string>): Promise<void> {
     if (transfers.length >= p.maxTransfers || edges >= budget) return;
     const last = legs[legs.length - 1]!;
-    for (const next of [...p.hubs, p.to]) {
+    // 只剩一次换乘时，最后一段只需通向目的地——再经其他枢纽就超次数了，
+    // 否则会在第一个枢纽就把边预算烧光（每枢纽 × 全枢纽）。
+    const remaining = p.maxTransfers - transfers.length;
+    const nexts = [...(remaining > 1 ? p.hubs : []), p.to];
+    for (const next of nexts) {
       if (visited.has(cityOf(next))) continue;
       if (edges >= budget) return;
       const trains = await query(last.toStation, next);

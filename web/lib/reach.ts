@@ -39,6 +39,8 @@ export function canReach(graph: ReachGraph, from: string, to: string): boolean {
 
 /** 大屏响应行（只标注用到的字段） */
 export interface BigScreenRow {
+  /** 被查询站电报码（该车经停此站） */
+  station_telecode?: string;
   /** 始发站电报码 */
   start_station_telecode?: string;
   /** 终到站电报码 */
@@ -60,17 +62,22 @@ export function bigscreenToEdges(
 ): ReachEdge[] {
   const seen = new Set<string>();
   const edges: ReachEdge[] = [];
-  for (const r of rows) {
-    const a = r.start_station_telecode;
-    const b = r.end_station_telecode;
-    if (!a || !b) continue;
+  const add = (a: string | undefined, b: string | undefined): void => {
+    if (!a || !b) return;
     const from = cityOf(a);
     const to = cityOf(b);
-    if (!from || !to || from === to) continue;
+    if (!from || !to || from === to) return;
     const key = `${from}>${to}`;
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return;
     seen.add(key);
     edges.push({ from, to });
+  };
+  for (const r of rows) {
+    // 每行是「某车经停被查询站」：可得 始发→本站 与 本站→终到 两条可达边。
+    // ⚠️ 只用 始发→终到 会漏掉大量经停方向的可达性（实测：武汉大屏取不到
+    // 广州→武汉 边，导致预筛误杀武汉）。
+    add(r.start_station_telecode, r.station_telecode);
+    add(r.station_telecode, r.end_station_telecode);
   }
   return edges;
 }
@@ -86,11 +93,33 @@ export function filterHubs(graph: ReachGraph, from: string, to: string, hubs: st
 }
 
 /**
+ * 按可达性给枢纽排序（T39）——**只排序，不删除**。
+ *
+ * ⚠️ 实测：大屏接口只覆盖「被查询站」的车次，故图是真实可达性的**稀疏子集**，
+ * 「图中无边」绝不等于「不可达」（例：武汉→十堰 无直接边，但经武昌/汉口有多趟车）。
+ * 因此**不能拿它做硬筛**，否则会误杀大量可行枢纽（实测 37 → 2）。
+ * 正确用法：把「两侧都已知可达」的枢纽排在前面，配合边预算（T41）自然剪枝。
+ *
+ * 排序键：两侧都可证可达 = 0（优先）；否则 = 1（保留但靠后）。
+ */
+export function orderByReachability(
+  graph: ReachGraph,
+  from: string,
+  to: string,
+  hubs: string[],
+): string[] {
+  const rank = (h: string): number => (canReach(graph, from, h) && canReach(graph, h, to) ? 0 : 1);
+  return [...hubs].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
  * 离线可达图预筛（T39/T40）——真实产物专用，比 `filterHubs` 更保守。
  *
- * 产物只覆盖 38 个枢纽站，城市未必都在图里，故**只在两侧城市都已知时才过滤**：
- *   - `h` 或对应侧城市不在图中 → 该侧跳过（宁可多查，不可漏）
- *   - 双方都在图中 → 缺 出发→枢纽 或 枢纽→目的 边即剔除
+ * ⚠️ 可达图的节点是**城市名**，而 `hubs` 传入的是**站码**——调用方必须先用
+ * `cityOf` 把站码翻成城市名（见 selfbuilt-query.ts），否则过滤会静默失效。
+ *
+ * 规则：只在**两侧城市都已知**时才过滤（产物只覆盖若干枢纽）；
+ * 未知侧跳过，宁可多查不可漏。
  */
 export function prefilterHubs(graph: ReachGraph, from: string, to: string, hubs: string[]): string[] {
   const known = new Set<string>();
@@ -104,4 +133,41 @@ export function prefilterHubs(graph: ReachGraph, from: string, to: string, hubs:
     if (known.has(to) && !canReach(graph, h, to)) return false;
     return true;
   });
+}
+
+// ── 走行方向过滤（T40）────────────────────────────────────
+/** 城市 → [经度, 纬度] */
+export type CityCoords = Record<string, [number, number] | undefined>;
+
+/**
+ * 枢纽是否落在「出发地 → 目的地」的大致走行方向上。
+ *
+ * 用向量点积判定：枢纽相对出发地的位移在「出发地→目的地」方向上的投影为正，
+ * 即不算反方向。深圳（广州东南）在「广州→十堰」方向上的投影为负 → 剔除。
+ *
+ * ⚠️ 这是**粗略**过滤（纬度/经度不按真实里程归一），只用于砍掉明显南辕北辙的
+ * 枢纽（T40），不追求精确——精确筛选交给后续的绕行判定（D60）。
+ * 缺少任意一侧坐标时返回 true（宁可多查，不可漏）。
+ */
+export function onDirection(
+  from: [number, number] | undefined,
+  to: [number, number] | undefined,
+  hub: [number, number] | undefined,
+): boolean {
+  if (!from || !to || !hub) return true;
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const hx = hub[0] - from[0];
+  const hy = hub[1] - from[1];
+  return dx * hx + dy * hy >= 0;
+}
+
+/** 按走行方向过滤枢纽（T40）；缺坐标的枢纽保留 */
+export function filterByDirection(
+  coords: CityCoords,
+  from: string,
+  to: string,
+  hubs: string[],
+): string[] {
+  return hubs.filter((h) => onDirection(coords[from], coords[to], coords[h]));
 }

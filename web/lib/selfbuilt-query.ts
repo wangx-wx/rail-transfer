@@ -12,7 +12,8 @@
 
 import { createGateway } from './gateway.ts';
 import type { Gateway } from './gateway.ts';
-import { prefilterHubs } from './reach.ts';
+import { orderByReachability, filterByDirection } from './reach.ts';
+import type { CityCoords } from './reach.ts';
 import type { ReachGraph } from './reach.ts';
 import { runSelfBuiltTransfer } from './selfbuilt.ts';
 import type { ScoredJourney } from './selfbuilt.ts';
@@ -42,12 +43,16 @@ export interface SelfBuiltQueryParams {
   maxTransfers: 1 | 2;
   /** 离线可达图；缺省不做预筛 */
   graph?: ReachGraph;
+  /** 城市坐标（T40 走行方向过滤）；缺省不做方向过滤 */
+  coords?: CityCoords;
   /** 站码 → 城市键（同城判定） */
   cityOf?: (stationCode: string) => string;
   /** 扩展边硬上限（T41） */
   maxEdges?: number;
   /** 输出上限（T45） */
   maxResults?: number;
+  /** 经停补查候选上限（T43 请求量收敛） */
+  maxDetourChecks?: number;
   /** 限流；缺省不限流（测试用） */
   rateLimit?: SelfBuiltRateLimit;
 }
@@ -76,7 +81,32 @@ export async function runSelfBuiltQuery(
   p: SelfBuiltQueryParams,
   deps: SelfBuiltQueryDeps,
 ): Promise<SelfBuiltQueryResult> {
-  const hubs = p.graph ? prefilterHubs(p.graph, p.from, p.to, p.hubs) : [...p.hubs];
+  // 枢纽预筛（T39 可达图）+ 走行方向过滤（T40）。
+  // ⚠️ 可达图节点是**城市名**，而 hubs 是**站码**，故先翻成城市名再过滤，
+  // 最后翻回站码（保持唯一，避免同城多站重复）。
+  const cityOf = p.cityOf ?? ((c: string) => c);
+  const fromCity = cityOf(p.from);
+  const toCity = cityOf(p.to);
+  const cityHubs = [...new Set(p.hubs.map(cityOf))];
+  // 可达图只用于**排序**（稀疏子集，不能当硬筛——见 reach.orderByReachability）
+  const orderedCities = p.graph
+    ? orderByReachability(p.graph, fromCity, toCity, cityHubs)
+    : cityHubs;
+  const keptCities = new Set(orderedCities);
+  // 方向过滤（T40）：作用于城市名，与可达图预筛取交集
+  if (p.coords) {
+    const directional = new Set(filterByDirection(p.coords, fromCity, toCity, [...keptCities]));
+    for (const c of [...keptCities]) if (!directional.has(c)) keptCities.delete(c);
+  }
+  // 按城市排序结果重排站码（同城只留一个代表，保持稳定序）
+  const seen = new Set<string>();
+  const hubs: string[] = [];
+  for (const city of orderedCities) {
+    const code = p.hubs.find((h) => cityOf(h) === city);
+    if (!code || !keptCities.has(city) || seen.has(code)) continue;
+    seen.add(code);
+    hubs.push(code);
+  }
 
   const wrapped = p.rateLimit ? withGateway(deps, createGateway(p.rateLimit)) : deps;
 
@@ -90,6 +120,7 @@ export async function runSelfBuiltQuery(
       ...(p.cityOf ? { cityOf: p.cityOf } : {}),
       ...(p.maxEdges != null ? { maxEdges: p.maxEdges } : {}),
       ...(p.maxResults != null ? { maxResults: p.maxResults } : {}),
+      ...(p.maxDetourChecks != null ? { maxDetourChecks: p.maxDetourChecks } : {}),
     },
     wrapped,
   );

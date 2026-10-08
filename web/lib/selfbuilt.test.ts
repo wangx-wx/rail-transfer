@@ -93,3 +93,20 @@ test('上限截断：输出不超过 M 条（T45）', async () => {
   const r = await runSelfBuiltTransfer({ from: 'O', to: 'D', date: DATE, hubs, maxTransfers: 1, maxResults: 5 }, deps(routes, {}));
   expect(r.journeys.length).toBeLessThanOrEqual(5);
 });
+
+test('经停补查只对加权前 K 条候选做（T43 请求量收敛）', async () => {
+  const routes: Record<string, Train[]> = {};
+  for (let i = 0; i < 10; i++) {
+    routes[`O>H${i}`] = [t(`G${i}`, 'O', `H${i}`, '08:00', '09:00', '01:00')];
+    routes[`H${i}>D`] = [t(`G${i}b`, `H${i}`, 'D', '09:30', '11:00', '01:30')];
+  }
+  const hubs = Array.from({ length: 10 }, (_, i) => `H${i}`);
+  let stops = 0;
+  const d: SelfBuiltDeps = {
+    async directTrains(from, to) { return routes[`${from}>${to}`] ?? []; },
+    async stopsOf(train) { stops++; return [train.fromStation, train.toStation]; },
+  };
+  await runSelfBuiltTransfer({ from: 'O', to: 'D', date: DATE, hubs, maxTransfers: 1, maxDetourChecks: 3 }, d);
+  // 3 条候选 × 每程 2 段 = 6
+  expect(stops).toBe(6);
+});

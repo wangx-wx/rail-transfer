@@ -11,7 +11,7 @@
 
 import { planJourneys } from './journey.ts';
 import { detectBacktrack } from './detour.ts';
-import { capJourneys, dedupeJourneys, journeyFlags } from './journeys.ts';
+import { capJourneys, dedupeJourneys, journeyFlags, sortJourneys } from './journeys.ts';
 import { isDetour } from './detour.ts';
 import type { Journey, JourneyApi, JourneyParams } from './journey.ts';
 import type { Train } from '../../shared/types.ts';
@@ -51,6 +51,8 @@ export interface SelfBuiltParams {
   maxEdges?: number;
   /** 输出上限，默认 200（T45） */
   maxResults?: number;
+  /** 经停补查的候选上限（T43 请求量收敛），默认 60 */
+  maxDetourChecks?: number;
 }
 
 /** 自研查询结果 */
@@ -91,10 +93,13 @@ export async function runSelfBuiltTransfer(
 
   const raw = await planJourneys(params, api);
 
-  // 回头判定：只对候选行程补查经停（T43），明确折返删除（D61）
+  // 回头判定：只对候选行程补查经停（T43），明确折返删除（D61）。
+  // 候选可能上百条，故**先去重 + 加权排序取前 K 条**再补经停，避免上百次串行请求。
+  const ranked = sortJourneys(dedupeJourneys(raw)).slice(0, p.maxDetourChecks ?? 60);
+
   let removed = 0;
   let candidates: Journey[] = [];
-  for (const j of raw) {
+  for (const j of ranked) {
     const stopsByLeg: string[][] = [];
     for (const leg of j.legs) stopsByLeg.push(await deps.stopsOf(leg));
     if (detectBacktrack(j.legs, stopsByLeg)) {

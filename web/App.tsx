@@ -15,6 +15,7 @@ import { createSelfBuiltDeps } from './lib/selfbuilt-adapter.ts';
 import { buildHubPool } from './lib/hubs.ts';
 import { parseReachability, type ReachGraph } from './lib/reach.ts';
 import { REACHABILITY_EDGES } from './data/reachability.ts';
+import { CITY_COORDS } from './data/coords.ts';
 import { cityOfStation } from './lib/city.ts';
 import SelfBuiltList from './components/SelfBuiltList.tsx';
 import type { ScoredJourney } from './lib/selfbuilt.ts';
@@ -279,8 +280,10 @@ export default function App() {
           hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
           maxTransfers: ctx.maxTransfers ?? 1,
           graph: reachRef.current,
+          coords: CITY_COORDS,
           cityOf: cityOfStation,
-          maxEdges: 60,
+          maxEdges: 400,
+          maxDetourChecks: 60,
           rateLimit: { concurrency: 3, intervalMs: 300 },
         },
         buildDeps,
