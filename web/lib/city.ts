@@ -4,7 +4,7 @@
  * 城市名 → 代表站码 + 该城市的全部车站码。
  */
 
-import { CITY_STATIONS, ALL_CITIES, STATION_NAMES } from '../data/stations.ts';
+import { CITY_STATIONS, ALL_CITIES, STATION_NAMES, STATION_CITIES } from '../data/stations.ts';
 
 /** 解析后的城市 */
 export interface ResolvedCity {
@@ -46,6 +46,16 @@ export function codeOfStation(name: string): ResolvedCity | null {
     if (stationName === n) return { code, stations: [code] };
   }
   return null;
+}
+
+/**
+ * 站码 → 城市名（同城判定，T37）。
+ *
+ * 实测坑（spike/station_name.js 城市字段）：天府机场 `TIE` → 成都、
+ * 长沙 `CWQ` 实为长沙南。查不到时回退站码自身，保证自研跨城层不丢节点。
+ */
+export function cityOfStation(code: string): string {
+  return (STATION_CITIES as Record<string, string | undefined>)[code] ?? code;
 }
 
 /** 全部可选城市名（供联想下拉使用，已去重） */

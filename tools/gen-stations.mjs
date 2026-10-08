@@ -111,6 +111,16 @@ for (const r of rows) {
   if (code && name) STATION_NAMES[code] = name;
 }
 
+// ── 站码 → 城市（同城判定，T37）──────────────────────────
+// 城市字段（索引 7）是天然的「同城车站定义表」：北京南 VNP → 北京、
+// 天府机场 TIE → 成都。用于自研中转的跨城/同城层划分。
+/** @type {Record<string,string>} */
+const STATION_CITIES = {};
+for (const r of rows) {
+  const [, , code, , , , , city] = r;
+  if (code && city) STATION_CITIES[code] = city;
+}
+
 const header = `/**
  * 城市 → 站点表（自动生成，勿手改）
  *
@@ -121,6 +131,7 @@ const header = `/**
  * CITY_STATIONS：${Object.keys(CITY_STATIONS).length} 个主要城市，含 Top-N 主站（D18）
  * ALL_CITIES：全部 ${Object.keys(ALL_CITIES).length} 个城市 → 代表站码（兜底，保证任意城市可查）
  * STATION_NAMES：全部 ${Object.keys(STATION_NAMES).length} 个站码 → 站名（用于展示始发/终到站）
+ * STATION_CITIES：全部 ${Object.keys(STATION_CITIES).length} 个站码 → 城市名（同城判定，T37）
  *
  * ⚠️ 主站随 OD 变化，本表只是枢纽枚举的候选起点（见 spec/技术方案.md §6.1）。
  */
@@ -130,8 +141,9 @@ const header = `/**
 const body =
   `export const CITY_STATIONS = ${JSON.stringify(CITY_STATIONS, null, 2)};\n\n` +
   `export const ALL_CITIES = ${JSON.stringify(ALL_CITIES, null, 0)};\n\n` +
-  `export const STATION_NAMES = ${JSON.stringify(STATION_NAMES, null, 0)};\n`;
+  `export const STATION_NAMES = ${JSON.stringify(STATION_NAMES, null, 0)};\n\n` +
+  `export const STATION_CITIES = ${JSON.stringify(STATION_CITIES, null, 0)};\n`;
 
-const outPath = fileURLToPath(new URL('../web/data/stations.js', import.meta.url));
+const outPath = fileURLToPath(new URL('../web/data/stations.ts', import.meta.url));
 writeFileSync(outPath, header + body);
 console.log(`✅ 已写入 ${outPath}（主要城市 ${Object.keys(CITY_STATIONS).length} + 全部城市 ${Object.keys(ALL_CITIES).length}）`);
