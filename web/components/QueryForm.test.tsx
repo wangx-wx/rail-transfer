@@ -73,3 +73,28 @@ test('QueryForm：口令默认显示，保留原输入方式和查询参数', as
     token: 'sample-token',
   })));
 });
+
+// ── D58：最多换乘次数选择器 ───────────────────────────────
+test('QueryForm：默认「最多换乘 1 次」，可切到 2 次并随查询上报', async () => {
+  const onTransfer = vi.fn();
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} />);
+  expect(screen.getByText('最多换乘')).toBeTruthy();
+
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
+  // 打开选择器并选「2 次」
+  fireEvent.mouseDown(container.querySelector('#transfers')!);
+  fireEvent.click(await screen.findByTitle('2 次'));
+  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
+
+  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({ maxTransfers: 2 })));
+});
+
+test('QueryForm：不选时默认 maxTransfers = 1', async () => {
+  const onTransfer = vi.fn();
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} />);
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
+  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
+  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({ maxTransfers: 1 })));
+});

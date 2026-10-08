@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { AutoComplete, Button, DatePicker, Form, Input, Tooltip } from 'antd';
+import { AutoComplete, Button, DatePicker, Form, Input, Select, Tooltip } from 'antd';
 import { SwapOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -21,6 +21,8 @@ interface FormValues {
   to: string;
   date: Dayjs;
   token?: string;
+  /** 最多换乘次数（D58）：1 / 2 */
+  transfers?: 1 | 2;
 }
 
 /** 校验通过的查询上下文 */
@@ -29,6 +31,8 @@ export interface QueryContext {
   to: ResolvedCity;
   date: string;
   token: string;
+  /** 最多换乘次数（D58）；直达查询用不到，故可选 */
+  maxTransfers?: 1 | 2;
 }
 
 interface Props {
@@ -64,7 +68,13 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
       form.setFields([{ name: 'to', errors: [`未识别的城市：${v.to}`] }]);
       return null;
     }
-    return { from, to, date: v.date.format('YYYY-MM-DD'), token: (v.token ?? '').trim() };
+    return {
+      from,
+      to,
+      date: v.date.format('YYYY-MM-DD'),
+      token: (v.token ?? '').trim(),
+      maxTransfers: v.transfers ?? 1,
+    };
   }
 
   /** 两个按钮共用的提交入口 */
@@ -84,7 +94,7 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
       form={form}
       layout="vertical"
       className="query-form"
-      initialValues={{ date: dayjs(defaultDate()) }}
+      initialValues={{ date: dayjs(defaultDate()), transfers: 1 }}
     >
       <Form.Item className="query-from" name="from" label="出发城市" rules={[{ required: true, message: '请输入出发城市' }]}>
         <AutoComplete
@@ -118,6 +128,15 @@ export default function QueryForm({ querying, onDirect, onTransfer }: Props) {
 
       <Form.Item className="query-date" name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
         <DatePicker placeholder="选择日期" style={{ width: '100%' }} />
+      </Form.Item>
+
+      <Form.Item className="query-transfers" name="transfers" label="最多换乘" initialValue={1}>
+        <Select
+          options={[
+            { value: 1, label: '1 次' },
+            { value: 2, label: '2 次' },
+          ]}
+        />
       </Form.Item>
 
       <Form.Item className="query-access" name="token" label="口令">
