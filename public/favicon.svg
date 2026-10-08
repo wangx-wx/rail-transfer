@@ -1,25 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="12306 查票助手">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="64" height="64" role="img" aria-label="12306 查票助手">
+  <!-- 与 AppTheme 使用同一套中性色和系统蓝，独立跟随系统主题。 -->
+  <style>
+    .tile-top { stop-color: #fff; }
+    .tile-middle { stop-color: #f5f5f7; }
+    .tile-bottom { stop-color: #e8e8ed; }
+    .accent-start { stop-color: #007aff; }
+    .accent-end { stop-color: #0066cc; }
+    .tile-edge { stroke: #e8e8ed; }
+    @media (prefers-color-scheme: dark) {
+      .tile-top { stop-color: #2c2c2e; }
+      .tile-middle { stop-color: #1c1c1e; }
+      .tile-bottom { stop-color: #101012; }
+      .accent-start { stop-color: #0a84ff; }
+      .accent-end { stop-color: #75b9ff; }
+      .tile-edge { stroke: #38383d; }
+    }
+  </style>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1e3a8a" />
-      <stop offset="1" stop-color="#2563eb" />
+    <linearGradient id="tile" x1="32" y1="12" x2="216" y2="252" gradientUnits="userSpaceOnUse">
+      <stop class="tile-top"/>
+      <stop offset="0.5" class="tile-middle"/>
+      <stop offset="1" class="tile-bottom"/>
     </linearGradient>
+    <linearGradient id="silver" x1="96" y1="68" x2="161" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset="0.45" stop-color="#f5f5f7"/>
+      <stop offset="0.78" stop-color="#dcdce2"/>
+      <stop offset="1" stop-color="#a5a5b0"/>
+    </linearGradient>
+    <linearGradient id="side" x1="48" y1="96" x2="117" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d3d3db"/>
+      <stop offset="0.5" stop-color="#b9b9c4"/>
+      <stop offset="1" stop-color="#898997"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="121" y1="87" x2="143" y2="131" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#526271"/>
+      <stop offset="0.4" stop-color="#2c3d50"/>
+      <stop offset="1" stop-color="#1d2d40"/>
+    </linearGradient>
+    <linearGradient id="stripe" x1="52" y1="124" x2="183" y2="186" gradientUnits="userSpaceOnUse">
+      <stop class="accent-start"/>
+      <stop offset="1" class="accent-end"/>
+    </linearGradient>
+    <filter id="shadow" x="-0.3" y="-0.3" width="1.6" height="1.8" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#1d1d1f" flood-opacity="0.2"/>
+    </filter>
   </defs>
 
-  <!-- 圆角底板（与页面 Header 同款渐变） -->
-  <rect width="64" height="64" rx="14" fill="url(#bg)" />
+  <path class="tile-edge" d="M80 4H176C229 4 252 27 252 80V176C252 229 229 252 176 252H80C27 252 4 229 4 176V80C4 27 27 4 80 4Z" fill="url(#tile)" stroke-width="1.5"/>
 
-  <!-- 车头：朝右的流线型高铁剪影，鼻端收短以保小尺寸清晰度 -->
-  <path
-    d="M10 44 L10 30 Q10 22 18 21 L31 19.5 Q44 18 52 30 L55.5 36.5 Q57 39.5 57 42.5 L57 44 Z"
-    fill="#ffffff"
-  />
+  <g filter="url(#shadow)">
+    <path d="M43 126L144 188C160 199 190 205 205 192L198 201C186 212 161 208 141 197L44 139Z" fill="#505563"/>
+    <path d="M44 75C43 64 51 56 66 52L112 94C117 124 139 154 171 174L202 191C191 202 166 203 145 191L44 130Z" fill="url(#side)"/>
+    <path d="M66 52C82 47 98 53 113 63C140 81 151 100 167 128C179 149 194 165 207 179C221 194 195 205 174 194C151 182 133 168 121 149C107 126 92 101 69 88L44 75C43 64 51 56 66 52Z" fill="url(#silver)"/>
+    <path d="M44 121L124 167C143 180 158 187 183 191C159 192 141 186 123 175L44 129Z" fill="url(#stripe)"/>
 
-  <!-- 车窗（底板色挖出） -->
-  <rect x="15" y="27.5" width="7.5" height="7" rx="1.8" fill="#2563eb" />
-  <rect x="26" y="26.5" width="7.5" height="7" rx="1.8" fill="#2563eb" />
-  <rect x="37" y="26.5" width="6.5" height="6.5" rx="1.8" fill="#2563eb" />
+    <path d="M107 87C119 86 144 106 158 124C161 129 158 133 153 132L122 118C119 116 117 114 116 110Z" fill="url(#glass)"/>
+    <path d="M110 87C125 92 140 104 149 115C136 105 125 100 114 99Z" fill="#cedce8" opacity="0.24"/>
+    <path d="M50 84L61 90C64 92 65 94 65 98V105C65 108 63 109 60 107L50 101Z" fill="#2c3d50"/>
+    <path d="M74 98L86 106C90 109 92 112 94 116L99 125C100 128 98 130 95 128L75 116C73 115 72 113 72 110V100C72 98 73 98 74 98Z" fill="#2c3d50"/>
 
-  <!-- 轨道 -->
-  <rect x="9" y="49" width="46" height="3.4" rx="1.7" fill="#ffffff" opacity="0.6" />
+    <path d="M66 52C82 47 98 53 113 63C140 81 151 100 167 128" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+    <path d="M130 147C143 164 162 179 183 187" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.65"/>
+    <path d="M158 166L169 173" fill="none" stroke="#fafdff" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
 </svg>
