@@ -158,3 +158,28 @@ test('硬上限：edges 超预算即停止扩展（T41）', async () => {
   await planJourneys({ from: 'O', to: 'D', date: DATE, hubs: ['H', 'K'], maxTransfers: 2, maxEdges: 1 }, api);
   expect(api.calls.length).toBeLessThanOrEqual(1);
 });
+
+// ── 分层扩展（BFS）：二次换乘模式下仍产出一次换乘结果 ──────
+test('分层 BFS：maxTransfers=2 时，一次换乘结果不被二次扩展挤掉', async () => {
+  // 枢纽 H 可一段到终点；枢纽 K 需要两段。二者都能到终点。
+  const api = fakeApi({
+    'O>H': [legOH],
+    'H>D': [legHD],
+    'O>K': [train({ trainNo: '5', trainCode: 'G5', fromStation: 'O', toStation: 'K', startTime: '07:00', arriveTime: '08:00', duration: '01:00' })],
+    'K>H': [train({ trainNo: '6', trainCode: 'G6', fromStation: 'K', toStation: 'H', startTime: '08:30', arriveTime: '09:30', duration: '01:00' })],
+    'H>K': [],
+  });
+  const js = await planJourneys({ from: 'O', to: 'D', date: DATE, hubs: ['K', 'H'], maxTransfers: 2 }, api);
+  const oneTransfer = js.filter((j) => j.legs.length === 2);
+  expect(oneTransfer.map((j) => j.legs.map((l) => l.trainCode).join('+'))).toContain('G1+G2');
+});
+
+test('分层 BFS：预算紧张时优先完成浅层（一次换乘）行程', async () => {
+  const legHK2 = train({ trainNo: '7', trainCode: 'G7', fromStation: 'H', toStation: 'K', startTime: '10:00', arriveTime: '11:00', duration: '01:00' });
+  const legKD2 = train({ trainNo: '8', trainCode: 'G8', fromStation: 'K', toStation: 'D', startTime: '11:30', arriveTime: '13:00', duration: '01:30' });
+  const api = fakeApi({ 'O>H': [legOH], 'H>D': [legHD], 'H>K': [legHK2], 'K>D': [legKD2] });
+  // 预算 2：O>H（1）+ H>D（2）即可完成一次换乘；向深扩展被预算挡住
+  const js = await planJourneys({ from: 'O', to: 'D', date: DATE, hubs: ['H'], maxTransfers: 2, maxEdges: 2 }, api);
+  expect(js.map((j) => j.legs.map((l) => l.trainCode).join('+'))).toContain('G1+G2');
+  expect(js.every((j) => j.legs.length === 2)).toBe(true);
+});

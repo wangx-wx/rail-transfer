@@ -107,6 +107,20 @@ export function connectLegs(
  * 只产出**终点落在目的地城市**的行程；换乘等待低于 T62 下限的边直接剪掉。
  * 同一条边（起站→终站）只查一次（内存去重），受 `maxEdges` 约束（T41）。
  */
+/**
+ * 自研中转主入口：在时间扩展图上做**分层扩展**（T37）。
+ *
+ * 逐层（换乘 0 次 → 1 次 → …）广度展开，保证浅层（少换乘）结果先于深层被枚举——
+ * 边预算（T41）耗尽时，被牺牲的一定是更深、更差的方案，而不是「经长沙 494 分钟」
+ * 这类最优解。同一条边只查一次（内存去重）。
+ */
+/**
+ * 自研中转主入口：在时间扩展图上做**分层扩展**（T37）。
+ *
+ * 逐层（换乘 0 次 → 1 次 → …）广度展开，保证浅层（少换乘）结果先于深层被枚举——
+ * 边预算（T41）耗尽时，被牺牲的一定是更深、更差的方案，而不是「经长沙 494 分钟」
+ * 这类最优解。同一条边只查一次（内存去重）。
+ */
 export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<Journey[]> {
   const cityOf = p.cityOf ?? ((c: string) => c);
   const sameCity = (a: string, b: string): boolean => cityOf(a) === cityOf(b);
@@ -127,45 +141,72 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
   }
 
   const results: Journey[] = [];
+  /** 部分行程 + 其绝对到达时刻（分钟，首程发车日为 0 点基准） */
+  type Partial = { journey: Journey; arriveAbs: number };
 
-  /** 从当前最后一程继续扩展 */
-  async function go(legs: Train[], transfers: JourneyTransfer[], arrAbs: number, visited: Set<string>): Promise<void> {
-    if (transfers.length >= p.maxTransfers || edges >= budget) return;
-    const last = legs[legs.length - 1]!;
-    // 只剩一次换乘时，最后一段只需通向目的地——再经其他枢纽就超次数了，
-    // 否则会在第一个枢纽就把边预算烧光（每枢纽 × 全枢纽）。
-    const remaining = p.maxTransfers - transfers.length;
-    const nexts = [...(remaining > 1 ? p.hubs : []), p.to];
-    for (const next of nexts) {
-      if (visited.has(cityOf(next))) continue;
-      if (edges >= budget) return;
-      const trains = await query(last.toStation, next);
-      for (const train of trains) {
-        const xfer = connectLegs(last, train, arrAbs, sameCity);
-        if (!xfer) continue;
-        const newLegs = [...legs, train];
-        const newTransfers = [...transfers, xfer];
-        const newArr = arriveAbs(arrAbs, train.duration, train.arriveTime, train.startTime);
-        if (cityOf(train.toStation) === destCity) {
-          results.push({ legs: newLegs, transfers: newTransfers });
-        } else {
-          await go(newLegs, newTransfers, newArr, new Set([...visited, cityOf(train.toStation)]));
-        }
-      }
-    }
-  }
-
+  // 首层：出发地 → 各枢纽
+  let layer: Partial[] = [];
   for (const hub of p.hubs) {
     if (cityOf(hub) === cityOf(p.from) || cityOf(hub) === destCity) continue;
     if (edges >= budget) break;
-    const firstLegs = await query(p.from, hub);
-    for (const train of firstLegs) {
+    for (const train of await query(p.from, hub)) {
       if (cityOf(train.fromStation) !== cityOf(p.from)) continue;
       const startAbs = timeToMinutes(train.startTime);
       if (startAbs == null) continue;
       const arr = arriveAbs(startAbs, train.duration, train.arriveTime, train.startTime);
-      await go([train], [], arr, new Set([cityOf(p.from), cityOf(hub)]));
+      layer.push({ journey: { legs: [train], transfers: [] }, arriveAbs: arr });
     }
+  }
+
+  /** 从 partial 出发，尝试接到 target，返回新部分行程或（到终点时）结果 */
+  async function hop(
+    partial: Partial,
+    target: string,
+  ): Promise<{ done: true } | { done: false; partial: Partial } | null> {
+    const last = partial.journey.legs[partial.journey.legs.length - 1]!;
+    if (cityOf(target) === cityOf(last.toStation)) return null;
+    for (const train of await query(last.toStation, target)) {
+      const xfer = connectLegs(last, train, partial.arriveAbs, sameCity);
+      if (!xfer) continue;
+      const journey: Journey = {
+        legs: [...partial.journey.legs, train],
+        transfers: [...partial.journey.transfers, xfer],
+      };
+      if (cityOf(train.toStation) === destCity) {
+        results.push(journey);
+        return { done: true };
+      }
+      const arr = arriveAbs(partial.arriveAbs, train.duration, train.arriveTime, train.startTime);
+      return { done: false, partial: { journey, arriveAbs: arr } };
+    }
+    return null;
+  }
+
+  for (let depth = 0; depth < p.maxTransfers; depth++) {
+    // 第一趟：所有部分行程先试「直达终点」——保证浅层结果先于深扩展被枚举，
+    // 边预算耗尽时被牺牲的是更深、更差的方案。
+    if (edges < budget) {
+      for (const partial of layer) {
+        if (edges >= budget) break;
+        await hop(partial, p.to);
+      }
+    }
+    // 第二趟：再向其他枢纽扩展，形成下一层。
+    // ⚠️ 必须为本层「直达终点」之外的更深一层预留配额，否则深扩展会把预算吃光，
+    // 导致一次换乘（更优）结果全被挤掉。
+    const reserve = p.hubs.length;
+    const next: Partial[] = [];
+    if (depth + 1 < p.maxTransfers) {
+      for (const partial of layer) {
+        if (edges + reserve >= budget) break;
+        for (const hub of p.hubs) {
+          if (edges + reserve >= budget) break;
+          const r = await hop(partial, hub);
+          if (r && !r.done) next.push(r.partial);
+        }
+      }
+    }
+    layer = next;
   }
 
   return results;
