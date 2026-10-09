@@ -11,7 +11,7 @@ import {
   LONG_WAIT_THRESHOLD,
   RISK_WAIT_THRESHOLD,
 } from '../../shared/constants.ts';
-import { timeToMinutes } from './journey.ts';
+import { durationToMinutes } from './journey.ts';
 import type { Journey } from './journey.ts';
 
 /** 单次换乘的等效惩罚（分钟）——加权排序用（D63） */
@@ -33,7 +33,7 @@ export interface JourneyStats {
 
 /** 一程的耗时（分钟）；无法解析时为 0 */
 function legMinutes(j: Journey, i: number): number {
-  const d = timeToMinutes(j.legs[i]!.duration);
+  const d = durationToMinutes(j.legs[i]!.duration);
   return d ?? 0;
 }
 

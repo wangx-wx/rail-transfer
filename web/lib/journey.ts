@@ -23,6 +23,19 @@ export function timeToMinutes(t: string): number | null {
   return h * 60 + min;
 }
 
+/**
+ * 'HH:MM' 形式的**历时** → 分钟；可超 24 小时（跨天长途，如 `27:05`）。
+ * 非法返回 null。与 `timeToMinutes` 分开：后者用于时钟时刻，上限 23:59。
+ */
+export function durationToMinutes(duration: string): number | null {
+  const m = /^(\d{1,3}):(\d{2})$/.exec((duration ?? '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (min > 59) return null;
+  return h * 60 + min;
+}
+
 /** 一次换乘点（接在某一程之后） */
 export interface JourneyTransfer {
   /** 换乘站码（上一程的到达站） */
@@ -73,7 +86,7 @@ interface Partial {
 
 /** 一程的绝对到达时刻（分钟，以首程发车日为 0 点基准）——T44 跨天自算 */
 function arriveAbs(startAbs: number, duration: string, arriveTime: string, startTime: string): number {
-  const dur = timeToMinutes(duration);
+  const dur = durationToMinutes(duration);
   if (dur != null) return startAbs + dur;
   // 无历时字段时的兜底：到达时刻早于发车时刻判为跨天
   const a = timeToMinutes(arriveTime);

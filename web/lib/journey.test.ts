@@ -7,7 +7,7 @@
 
 import { test, expect } from 'vitest';
 
-import { planJourneys, timeToMinutes } from './journey.ts';
+import { planJourneys, timeToMinutes, durationToMinutes } from './journey.ts';
 import type { JourneyApi } from './journey.ts';
 import type { Train } from '../../shared/types.ts';
 
@@ -59,6 +59,22 @@ test('timeToMinutes：HH:MM → 分钟，非法输入返回 null', () => {
   expect(timeToMinutes('23:59')).toBe(1439);
   expect(timeToMinutes('----')).toBeNull();
   expect(timeToMinutes('')).toBeNull();
+  // 时钟时刻不跨 24h
+  expect(timeToMinutes('27:05')).toBeNull();
+});
+
+test('durationToMinutes：历时可超 24 小时（跨天长途）', () => {
+  expect(durationToMinutes('05:56')).toBe(356);
+  expect(durationToMinutes('27:05')).toBe(1625); // K1348 广州→西安
+  expect(durationToMinutes('----')).toBeNull();
+});
+
+test('超长历时计为跨越天数，不被当成 0 分钟', async () => {
+  const k = train({ trainNo: 'k', trainCode: 'K1348', fromStation: 'O', toStation: 'H', startTime: '10:05', arriveTime: '13:10', duration: '27:05' });
+  const g = train({ trainNo: 'g', trainCode: 'G1166', fromStation: 'H', toStation: 'D', startTime: '14:00', arriveTime: '15:50', duration: '01:50' });
+  const api = fakeApi({ 'O>H': [k], 'H>D': [g] });
+  const js = await planJourneys({ from: 'O', to: 'D', date: DATE, hubs: ['H'], maxTransfers: 1 }, api);
+  expect(js).toHaveLength(1);
 });
 
 // ── 一次换乘 ────────────────────────────────────────────
