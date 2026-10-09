@@ -131,18 +131,30 @@ export interface SeatPriceItem {
 }
 
 /**
- * 席别价格表 → 展示条目。
+ * 席别价格的固定展示序（先高铁席别、后普速；与 `SEAT_CODE_NAME` 一致）。
+ *
+ * 用于把每程价格按稳定顺序排成多行，两程并排时同名席别自然对齐、便于比价。
+ * 列表外的未知码排在末尾（保持接口内原序，不丢数据）。
+ */
+export const SEAT_PRICE_ORDER = [
+  '9', 'P', 'M', 'D', 'S', 'O', '6', 'I', 'J', 'F', 'A', '4', '3', '2', '1', 'WZ', 'W',
+];
+
+/**
+ * 席别价格表 → 展示条目（按 `SEAT_PRICE_ORDER` 固定排序）。
  *
  * 键为席别码（`O`/`M`/`9`/`1`/`3`…，见 `SEAT_CODE_NAME`），值为价格（元）。
  * 名字用官方表映射；未知码回退码本身（不丢数据）。
  */
 export function seatPrices(map: Record<string, number> | undefined): SeatPriceItem[] {
   if (!map) return [];
-  const items: SeatPriceItem[] = [];
-  for (const [code, p] of Object.entries(map)) {
-    items.push({ code, name: SEAT_CODE_NAME[code] ?? code, label: priceLabel(p) });
-  }
-  return items;
+  const rank = (code: string): number => {
+    const i = SEAT_PRICE_ORDER.indexOf(code);
+    return i < 0 ? SEAT_PRICE_ORDER.length : i;
+  };
+  return Object.entries(map)
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([code, p]) => ({ code, name: SEAT_CODE_NAME[code] ?? code, label: priceLabel(p) }));
 }
 
 /**

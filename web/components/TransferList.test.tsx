@@ -68,11 +68,20 @@ test('TransferList：完整响应的 10 条方案与 20 程详情均保留', () 
 test('TransferList：摘要之外完整保留各席别、始发终到与已查价格', () => {
   const p = plan();
   p.legs[0] = { ...p.legs[0]!, startStation: '哈尔滨西', endStation: '深圳北', seats: { ZE: '无', ZY: '有', SWZ: '2', WZ: '无' } };
-  render(<TransferList groups={groups([p])} {...priceProps} prices={{ '1|01|05': { O: 300, M: 450, '9': 900 }, '2|01|04': { O: 280 } }} />);
+  const { container } = render(<TransferList groups={groups([p])} {...priceProps} prices={{ '1|01|05': { O: 300, M: 450, '9': 900 }, '2|01|04': { O: 280 } }} />);
   expandDetails();
-  for (const text of ['始发 哈尔滨西 · 终到 深圳北', '一等座 有', '商务座 2 张', '无座 无', '二等座 ¥300', '一等座 ¥450', '商务座 ¥900', '参考价 ¥580']) {
+  for (const text of ['始发 哈尔滨西 · 终到 深圳北', '一等座 有', '商务座 2 张', '无座 无', '二等座参考价 ¥580']) {
     expect(screen.getByText(text)).toBeTruthy();
   }
+  // 每程价格完整保留：第一程 3 个席别、第二程 1 个（对齐小表两列）
+  const rows = [...container.querySelectorAll('.price-row')].map((r) => [
+    r.querySelector('.price-name')!.textContent,
+    r.querySelector('.price-amount')!.textContent,
+  ]);
+  expect(rows).toEqual([
+    ['商务座', '¥900'], ['一等座', '¥450'], ['二等座', '¥300'],
+    ['二等座', '¥280'],
+  ]);
 });
 
 test('TransferList：按枢纽分组并展示起终点与总耗时', () => {
@@ -149,7 +158,7 @@ test('TransferList：超长等待标记', () => {
 });
 
 // ── 价格 ─────────────────────────────────────────────────
-test('TransferList：两程价格都查到时显示合计参考价', () => {
+test('TransferList：两程价格都查到时显示二等座参考价与分解', () => {
   render(
     <TransferList
       groups={groups([plan()])}
@@ -157,14 +166,16 @@ test('TransferList：两程价格都查到时显示合计参考价', () => {
       prices={{ '1|01|05': { O: 300 }, '2|01|04': { O: 280 } }}
     />,
   );
-  expect(screen.getByText('参考价 ¥580')).toBeTruthy();
+  expect(screen.getByText('二等座参考价 ¥580')).toBeTruthy();
+  expect(screen.getByText('¥300 + ¥280')).toBeTruthy();
 });
 
-test('TransferList：只查到一程时不显示合计', () => {
+test('TransferList：只查到一程时提示展开两程查价', () => {
   render(
     <TransferList groups={groups([plan()])} {...priceProps} prices={{ '1|01|05': { O: 300 } }} />,
   );
   expect(screen.queryByText(/参考价/)).toBeNull();
+  expect(screen.getByText('展开两程查价')).toBeTruthy();
 });
 
 // 回归：流式到达的新枢纽面板必须自动展开（defaultActiveKey 只在挂载时生效，
@@ -214,4 +225,25 @@ test('TransferList：折叠详情时保留车次、等待风险和两程余票�
   expect(container.querySelector('details')?.open).toBe(true);
   expect(screen.getAllByRole('button', { name: '查价' })).toHaveLength(2);
   expect(onQueryPrice).not.toHaveBeenCalled();
+});
+
+// ── 每程查价：方案1 对齐小表 ──────────────────────────────
+test('TransferList：每程价格按固定席别序排成多行表格（方案1）', () => {
+  const { container } = render(
+    <TransferList
+      groups={groups([plan()])}
+      {...priceProps}
+      prices={{ '1|01|05': { O: 300, M: 450, '9': 900 }, '2|01|04': { O: 280 } }}
+    />,
+  );
+  expandDetails();
+  const lists = container.querySelectorAll('.price-list');
+  expect(lists).toHaveLength(2);
+  // 第一程：固定序 商务→一等→二等
+  expect([...lists[0]!.querySelectorAll('.price-name')].map((n) => n.textContent))
+    .toEqual(['商务座', '一等座', '二等座']);
+  expect([...lists[0]!.querySelectorAll('.price-amount')].map((n) => n.textContent))
+    .toEqual(['¥900', '¥450', '¥300']);
+  // 第二程只有二等座
+  expect([...lists[1]!.querySelectorAll('.price-name')].map((n) => n.textContent)).toEqual(['二等座']);
 });

@@ -67,6 +67,16 @@
 .ticket-actions > * { min-width: 0; max-width: 100%; }
 .price-item { font-size: 14px; font-weight: 500; }
 .total-price { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 每程查价：对齐小表（席别名 | 价格），多行便于横向比价 */
+.price-list { display: grid; gap: 2px; min-width: 0; }
+.price-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: baseline; }
+.price-name { font-size: 13px; color: var(--rail-secondary); overflow-wrap: anywhere; }
+.price-amount { font-size: 14px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ref-price { display: inline-grid; gap: 2px; justify-items: end; text-align: right; }
+.price-breakdown { font-size: 12px; color: var(--rail-secondary); font-variant-numeric: tabular-nums; }
+.leg-prices { display: grid; gap: 14px; }
+.leg-price { display: grid; gap: 4px; }
+.leg-price-code { font-size: 13px; font-weight: 600; color: var(--rail-secondary); }
 .wrapping-tag { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .ticket-note { margin-top: 12px; }
 .buy-short-result { margin-top: 12px; border-top: 1px solid var(--rail-line); padding-top: 12px; overflow-wrap: anywhere; }

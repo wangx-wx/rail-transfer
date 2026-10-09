@@ -107,3 +107,37 @@ test('SelfBuiltList：空结果给出提示', () => {
   );
   expect(screen.getByText('没有自研中转方案')).toBeTruthy();
 });
+
+// ── 每程查价：方案1 对齐小表 ──────────────────────────────
+test('SelfBuiltList：每程价格按固定席别序排成多行表格（方案1）', () => {
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[journey()]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{ 'G1101|01|02': { O: 300, M: 450, '9': 900 }, 'G2202|01|02': { O: 280 } }}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const lists = container.querySelectorAll('.price-list');
+  expect(lists).toHaveLength(2);
+  expect([...lists[0]!.querySelectorAll('.price-name')].map((n) => n.textContent))
+    .toEqual(['商务座', '一等座', '二等座']);
+  expect([...lists[1]!.querySelectorAll('.price-name')].map((n) => n.textContent)).toEqual(['二等座']);
+});
+
+test('SelfBuiltList：两程都查到二等座时显示参考价与分解', () => {
+  render(
+    <SelfBuiltList
+      journeys={[journey()]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{ 'G1101|01|02': { O: 300 }, 'G2202|01|02': { O: 280 } }}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(screen.getByText('二等座参考价 ¥580')).toBeTruthy();
+  expect(screen.getByText('¥300 + ¥280')).toBeTruthy();
+});

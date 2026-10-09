@@ -8,7 +8,8 @@
 import { Button, Card, Collapse, Empty, Space, Tag } from 'antd';
 
 import JourneyTimes from './JourneyTimes.tsx';
-import { durationLabel, priceKey, seatPrices } from '../lib/view.ts';
+import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
+import { durationLabel, priceKey, priceLabel, seatPrices } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
 import type { ScoredJourney } from '../lib/selfbuilt.ts';
 
@@ -67,6 +68,12 @@ function JourneyCard({
 >) {
   const first = j.legs[0]!;
   const last = j.legs[j.legs.length - 1]!;
+  const legPrices = j.legs.map((l) => {
+    const key = priceKey(l.trainNo, l.fromStationNo, l.toStationNo);
+    return key ? prices[key]?.[REFERENCE_SEAT_CODE] : undefined;
+  });
+  const total = legPrices.length > 0 && legPrices.every((x) => x != null)
+    ? legPrices.reduce((a, b) => a! + b!, 0) : null;
 
   return (
     <Card className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
@@ -102,6 +109,16 @@ function JourneyCard({
             {j.risky && <Tag color="warning">换乘紧张</Tag>}
           </Space>
         )}
+        <div className="ticket-actions">
+          {total != null ? (
+            <span className="ref-price">
+              <strong className="total-price">二等座参考价 {priceLabel(total)}</strong>
+              <span className="price-breakdown">{legPrices.map((x) => priceLabel(x)).join(' + ')}</span>
+            </span>
+          ) : (
+            <span className="muted">展开两程查价</span>
+          )}
+        </div>
       </div>
       <details className="journey-details">
         <summary>完整行程</summary>
@@ -110,23 +127,34 @@ function JourneyCard({
             <Leg key={`${l.trainNo}-${i}`} train={l} no={i + 1} name={name} />
           ))}
         </div>
-        <div className="ticket-actions">
+        <div className="leg-prices">
           {j.legs.map((l, i) => {
             const key = priceKey(l.trainNo, l.fromStationNo, l.toStationNo);
             const map = key ? prices[key] : undefined;
             const items = seatPrices(map);
-            return items.length ? (
-              items.map((p) => <span key={`${l.trainCode}-${p.code}`} className="price-item">{l.trainCode} {p.name} {p.label}</span>)
-            ) : (
-              <Button
-                key={`${l.trainCode}-${i}`}
-                type="link"
-                disabled={!key || !l.seatTypes}
-                loading={key ? loadingPrice.has(key) : false}
-                onClick={() => key && onQueryPrice(l.trainNo, l.fromStationNo, l.toStationNo, date, l.seatTypes ?? '')}
-              >
-                {l.trainCode} 查价
-              </Button>
+            return (
+              <div className="leg-price" key={`${l.trainCode}-${i}`}>
+                <span className="leg-price-code">{l.trainCode}</span>
+                {items.length ? (
+                  <div className="price-list" aria-label={`${l.trainCode} 各席别价格`}>
+                    {items.map((p) => (
+                      <div className="price-row" key={p.code}>
+                        <span className="price-name">{p.name}</span>
+                        <span className="price-amount">{p.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Button
+                    type="link"
+                    disabled={!key || !l.seatTypes}
+                    loading={key ? loadingPrice.has(key) : false}
+                    onClick={() => key && onQueryPrice(l.trainNo, l.fromStationNo, l.toStationNo, date, l.seatTypes ?? '')}
+                  >
+                    {l.trainCode} 查价
+                  </Button>
+                )}
+              </div>
             );
           })}
         </div>

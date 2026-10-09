@@ -130,21 +130,27 @@ test('priceLabel：未查到 → 空串', () => {
   expect(priceLabel(NaN)).toBe('');
 });
 
-test('seatPrices：按价格表顺序，名字用官方表映射', () => {
-  // 高铁码
-  expect(seatPrices({ O: 626, M: 1033 })).toEqual([
-    { code: 'O', name: '二等座', label: '¥626' },
-    { code: 'M', name: '一等座', label: '¥1033' },
-  ]);
-  // 普速数字码
-  expect(seatPrices({ '1': 180.5, '3': 310.5 })).toEqual([
-    { code: '1', name: '硬座', label: '¥180.5' },
-    { code: '3', name: '硬卧', label: '¥310.5' },
-  ]);
-  // 未知码回退码本身，不丢数据
+test('seatPrices：名字用官方表映射，未知码回退码本身不丢数据', () => {
+  expect(seatPrices({ O: 626 })).toEqual([{ code: 'O', name: '二等座', label: '¥626' }]);
+  expect(seatPrices({ '1': 180.5 })).toEqual([{ code: '1', name: '硬座', label: '¥180.5' }]);
   expect(seatPrices({ X: 99 })).toEqual([{ code: 'X', name: 'X', label: '¥99' }]);
   expect(seatPrices(undefined)).toEqual([]);
   expect(seatPrices({})).toEqual([]);
+});
+
+test('seatPrices：按固定席别序输出（不随接口返回顺序变化）', () => {
+  // 故意打乱输入顺序；输出应按 商务→一等→二等→硬卧→硬座 的固定序
+  expect(seatPrices({ '1': 180, '9': 900, M: 450, O: 300, '3': 310 })).toEqual([
+    { code: '9', name: '商务座', label: '¥900' },
+    { code: 'M', name: '一等座', label: '¥450' },
+    { code: 'O', name: '二等座', label: '¥300' },
+    { code: '3', name: '硬卧', label: '¥310' },
+    { code: '1', name: '硬座', label: '¥180' },
+  ]);
+});
+
+test('seatPrices：未知席别码排在已知之后', () => {
+  expect(seatPrices({ X: 99, O: 300 }).map((x) => x.code)).toEqual(['O', 'X']);
 });
 
 // ── durationLabel ────────────────────────────────────────

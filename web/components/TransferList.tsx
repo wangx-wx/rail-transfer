@@ -86,7 +86,16 @@ function Leg({
             <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
           ))}</div>
           <div className="ticket-actions">
-            {priceItems.length ? priceItems.map((p) => <span key={p.code} className="price-item">{p.name} {p.label}</span>) : (
+            {priceItems.length ? (
+              <div className="price-list" aria-label="各席别价格">
+                {priceItems.map((p) => (
+                  <div className="price-row" key={p.code}>
+                    <span className="price-name">{p.name}</span>
+                    <span className="price-amount">{p.label}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
               <Button type="link" disabled={!key || !leg.seatTypes} loading={key ? loadingPrice.has(key) : false}
                 onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')}>
                 查价
@@ -134,7 +143,14 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice }: {
           {flags.length > 0 && <Space size={4} wrap>{flags.map((flag) => <Tag className="wrapping-tag" key={flag.label} color={FLAG_COLOR[flag.kind]}>{flag.label}</Tag>)}</Space>}
         </div>
         <div className="ticket-actions">
-          {total != null ? <strong className="total-price">参考价 {priceLabel(total)}</strong> : <span className="muted">展开两程查价</span>}
+          {total != null ? (
+            <span className="ref-price">
+              <strong className="total-price">二等座参考价 {priceLabel(total)}</strong>
+              <span className="price-breakdown">{legPrices.map((x) => priceLabel(x)).join(' + ')}</span>
+            </span>
+          ) : (
+            <span className="muted">展开两程查价</span>
+          )}
         </div>
       </div>
       <details className="journey-details">
