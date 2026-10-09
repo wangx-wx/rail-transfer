@@ -138,7 +138,7 @@ function JourneyCard({
                 {items.length ? (
                   <div className="price-list" aria-label={`${l.trainCode} 各席别价格`}>
                     {items.map((p) => (
-                      <div className="price-row" key={p.code}>
+                      <div className={`price-row${p.code === REFERENCE_SEAT_CODE ? ' price-row--ref' : ''}`} key={p.code}>
                         <span className="price-name">{p.name}</span>
                         <span className="price-amount">{p.label}</span>
                       </div>

@@ -85,24 +85,27 @@ function Leg({
           <div className="seat-list">{seats.map((x) => (
             <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
           ))}</div>
-          <div className="ticket-actions">
-            {priceItems.length ? (
-              <div className="price-list" aria-label="各席别价格">
-                {priceItems.map((p) => (
-                  <div className="price-row" key={p.code}>
-                    <span className="price-name">{p.name}</span>
-                    <span className="price-amount">{p.label}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <Button type="link" disabled={!key || !leg.seatTypes} loading={key ? loadingPrice.has(key) : false}
-                onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')}>
-                查价
-              </Button>
-            )}
-          </div>
         </div>
+        {priceItems.length ? (
+          <div className="leg-price">
+            <div className="leg-price-head">{leg.trainCode} · {leg.fromStation} → {leg.toStation}</div>
+            <div className="price-list" aria-label="各席别价格">
+              {priceItems.map((p) => (
+                <div className={`price-row${p.code === REFERENCE_SEAT_CODE ? ' price-row--ref' : ''}`} key={p.code}>
+                  <span className="price-name">{p.name}</span>
+                  <span className="price-amount">{p.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="leg-price-cta">
+            <Button type="link" disabled={!key || !leg.seatTypes} loading={key ? loadingPrice.has(key) : false}
+              onClick={() => key && onQueryPrice(leg.trainNo, leg.fromStationNo, leg.toStationNo, date, leg.seatTypes ?? '')}>
+              查价
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -247,3 +247,32 @@ test('TransferList：每程价格按固定席别序排成多行表格（方案1�
   // 第二程只有二等座
   expect([...lists[1]!.querySelectorAll('.price-name')].map((n) => n.textContent)).toEqual(['二等座']);
 });
+
+// ── 方案B 分组面板：每程价格独立成卡 ──────────────────────
+test('TransferList：每程价格包在 .leg-price 容器内（方案B）', () => {
+  const { container } = render(
+    <TransferList
+      groups={groups([plan()])}
+      {...priceProps}
+      prices={{ '1|01|05': { O: 300 }, '2|01|04': { O: 280 } }}
+    />,
+  );
+  expandDetails();
+  const boxes = container.querySelectorAll('.leg-price');
+  expect(boxes).toHaveLength(2);
+  expect(boxes[0]!.querySelector('.price-list')).toBeTruthy();
+});
+
+test('TransferList：二等座价格行高亮（方案B）', () => {
+  const { container } = render(
+    <TransferList
+      groups={groups([plan()])}
+      {...priceProps}
+      prices={{ '1|01|05': { O: 300, M: 450 } }}
+    />,
+  );
+  expandDetails();
+  const refRow = container.querySelector('.price-row--ref');
+  expect(refRow?.querySelector('.price-name')?.textContent).toBe('二等座');
+  expect(container.querySelectorAll('.price-row--ref')).toHaveLength(1);
+});

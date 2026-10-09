@@ -21,6 +21,7 @@ export default function AppTheme({ children }: { children: ReactNode }) {
     line: dark ? '#38383d' : '#e8e8ed',
     blue: dark ? '#75b9ff' : '#0066cc',
     green: dark ? '#79d69a' : '#267b48',
+    panel: dark ? '#232326' : '#fbfbfd',
   };
   const variables = Object.fromEntries(Object.entries(colors).map(([key, value]) => [`--rail-${key}`, value]));
   return (

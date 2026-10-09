@@ -141,3 +141,18 @@ test('SelfBuiltList：两程都查到二等座时显示参考价与分解', () =
   expect(screen.getByText('二等座参考价 ¥580')).toBeTruthy();
   expect(screen.getByText('¥300 + ¥280')).toBeTruthy();
 });
+
+test('SelfBuiltList：二等座价格行高亮（方案B）', () => {
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[journey()]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{ 'G1101|01|02': { O: 300, M: 450 } }}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const refRow = container.querySelector('.price-row--ref');
+  expect(refRow?.querySelector('.price-name')?.textContent).toBe('二等座');
+});
