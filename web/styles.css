@@ -51,7 +51,7 @@
 .train-identity { display: grid; gap: 6px; overflow-wrap: anywhere; }
 .train-identity strong { font-size: 16px; font-weight: 600; }
 .train-identity > span { font-size: 12px; color: var(--rail-secondary); }
-.ticket-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; font-size: 13px; color: var(--rail-secondary); }
+.ticket-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px; color: var(--rail-secondary); }
 .journey-times { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: start; }
 .journey-end { display: grid; gap: 3px; min-width: 0; }
 .journey-end:last-child { text-align: right; }
@@ -66,17 +66,17 @@
 .ticket-actions { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: flex-end; align-items: center; }
 .ticket-actions > * { min-width: 0; max-width: 100%; }
 .price-item { font-size: 14px; font-weight: 500; }
-.total-price { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.total-price { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 /* 每程查价：对齐小表（席别名 | 价格），多行便于横向比价 */
 .price-list { display: grid; min-width: 0; }
-.price-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--rail-line); }
+.price-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--rail-line); }
 .price-row:first-child { border-top: 0; }
 .price-name { font-size: 13px; color: var(--rail-secondary); overflow-wrap: anywhere; }
 .price-amount { font-size: 14px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .price-row--ref .price-name, .price-row--ref .price-amount { color: var(--rail-blue); font-weight: 600; }
-.ref-price { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ref-price { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .price-breakdown { font-size: 12px; color: var(--rail-secondary); font-variant-numeric: tabular-nums; }
-.leg-prices { display: grid; gap: 14px; }
+.leg-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: start; }
 .leg-price-code { font-size: 13px; font-weight: 600; color: var(--rail-secondary); }
 .wrapping-tag { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .ticket-note { margin-top: 12px; }
@@ -92,11 +92,11 @@
 .leg-heading { grid-area: heading; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .leg-content > .journey-times { grid-area: times; }
 .leg-tools { grid-area: seats; min-width: 0; }
-.leg-content .journey-end strong { font-size: 21px; }
+.leg-content .journey-end strong { font-size: 18px; }
 /* 方案B：每程价格独立成卡（浅底 + 圆角 + 行分隔线），占满详情行宽度 */
 /* ⚠️ grid-area 仅作用于 .leg-content 的直接子级——.leg-prices 容器内的卡片不再分区，否则会互相叠放 */
 .leg-content > .leg-price, .leg-content > .leg-price-cta { grid-area: price; }
-.leg-price { background: var(--rail-panel); border: 1px solid var(--rail-line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; }
+.leg-price { background: var(--rail-panel); border: 1px solid var(--rail-line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; }
 .leg-price-head { font-size: 13px; font-weight: 600; color: var(--rail-secondary); }
 .leg-price-cta { display: flex; justify-content: flex-end; }
 
