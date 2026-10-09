@@ -49,6 +49,10 @@ export interface SelfBuiltQueryParams {
   cityOf?: (stationCode: string) => string;
   /** 扩展边硬上限（T41） */
   maxEdges?: number;
+  /** 同一到达城市每层最多保留几条部分行程（支配剪枝，T49） */
+  beamPerStation?: number;
+  /** 每层部分行程总数上限（束宽，T49） */
+  beamSize?: number;
   /** 输出上限（T45） */
   maxResults?: number;
   /** 经停补查候选上限（T43 请求量收敛） */
@@ -121,6 +125,8 @@ export async function runSelfBuiltQuery(
       ...(p.maxEdges != null ? { maxEdges: p.maxEdges } : {}),
       ...(p.maxResults != null ? { maxResults: p.maxResults } : {}),
       ...(p.maxDetourChecks != null ? { maxDetourChecks: p.maxDetourChecks } : {}),
+      ...(p.beamPerStation != null ? { beamPerStation: p.beamPerStation } : {}),
+      ...(p.beamSize != null ? { beamSize: p.beamSize } : {}),
     },
     wrapped,
   );

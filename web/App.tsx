@@ -284,6 +284,8 @@ export default function App() {
           cityOf: cityOfStation,
           maxEdges: 400,
           maxDetourChecks: 60,
+          beamPerStation: 24,
+          beamSize: 480,
           rateLimit: { concurrency: 3, intervalMs: 300 },
         },
         buildDeps,

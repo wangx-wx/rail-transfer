@@ -59,6 +59,16 @@ export interface JourneyParams {
   cityOf?: (stationCode: string) => string;
   /** 单次查询最多扩展的边数（硬上限，T41）；缺省不限制 */
   maxEdges?: number;
+  /** 同一到达城市每层最多保留几条部分行程（支配剪枝，T49）；缺省不剪 */
+  beamPerStation?: number;
+  /** 每层部分行程总数上限（束宽，T49）；缺省不剪 */
+  beamSize?: number;
+}
+
+/** 部分行程 + 其绝对到达时刻（分钟，首程发车日为 0 点基准）——T44 跨天自算 */
+interface Partial {
+  journey: Journey;
+  arriveAbs: number;
 }
 
 /** 一程的绝对到达时刻（分钟，以首程发车日为 0 点基准）——T44 跨天自算 */
@@ -102,24 +112,44 @@ export function connectLegs(
 }
 
 /**
- * 自研中转主入口：在时间扩展图上做分层扩展（T37）。
+ * 按到达时间剪枝一层部分行程（T49）。
  *
- * 只产出**终点落在目的地城市**的行程；换乘等待低于 T62 下限的边直接剪掉。
- * 同一条边（起站→终站）只查一次（内存去重），受 `maxEdges` 约束（T41）。
+ * ① **支配剪枝**：同一到达城市只保留最早到达的 N 条——晚到的部分行程在同一条
+ *    后续边上必然仍晚到，被完全支配，留着只是浪费边预算。
+ * ② **束宽**：整层再截到最多 `size` 条。
+ *
+ * 依据：首层候选可达上千条（实测 广州南经 36 枢纽 → 1568 条），不剪枝则边预算
+ * 会被浅层的次优行程吃光，二次换乘无从展开。
  */
+function pruneLayer(
+  layer: Partial[],
+  cityOf: (c: string) => string,
+  perStation: number | undefined,
+  size: number | undefined,
+): Partial[] {
+  let out = layer;
+  if (perStation != null) {
+    const best = new Map<string, Partial[]>();
+    for (const p of out) {
+      const key = cityOf(p.journey.legs[p.journey.legs.length - 1]!.toStation);
+      const list = best.get(key);
+      if (list) list.push(p);
+      else best.set(key, [p]);
+    }
+    out = [...best.values()].flatMap((list) =>
+      [...list].sort((a, b) => a.arriveAbs - b.arriveAbs).slice(0, perStation),
+    );
+  }
+  out = [...out].sort((a, b) => a.arriveAbs - b.arriveAbs);
+  return size != null ? out.slice(0, size) : out;
+}
+
 /**
  * 自研中转主入口：在时间扩展图上做**分层扩展**（T37）。
  *
  * 逐层（换乘 0 次 → 1 次 → …）广度展开，保证浅层（少换乘）结果先于深层被枚举——
- * 边预算（T41）耗尽时，被牺牲的一定是更深、更差的方案，而不是「经长沙 494 分钟」
- * 这类最优解。同一条边只查一次（内存去重）。
- */
-/**
- * 自研中转主入口：在时间扩展图上做**分层扩展**（T37）。
- *
- * 逐层（换乘 0 次 → 1 次 → …）广度展开，保证浅层（少换乘）结果先于深层被枚举——
- * 边预算（T41）耗尽时，被牺牲的一定是更深、更差的方案，而不是「经长沙 494 分钟」
- * 这类最优解。同一条边只查一次（内存去重）。
+ * 边预算（T41）耗尽时，被牺牲的一定是更深、更差的方案。每层用 `pruneLayer`
+ * 控制规模（T49）。同一条边只查一次（内存去重）。
  */
 export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<Journey[]> {
   const cityOf = p.cityOf ?? ((c: string) => c);
@@ -141,8 +171,31 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
   }
 
   const results: Journey[] = [];
-  /** 部分行程 + 其绝对到达时刻（分钟，首程发车日为 0 点基准） */
-  type Partial = { journey: Journey; arriveAbs: number };
+
+  /** 从 partial 接续到 target：到终点的进 `done`，其余成为下一层的部分行程 */
+  async function connect(
+    partial: Partial,
+    target: string,
+    done: Journey[],
+    next: Partial[],
+  ): Promise<void> {
+    const last = partial.journey.legs[partial.journey.legs.length - 1]!;
+    if (cityOf(target) === cityOf(last.toStation)) return;
+    for (const train of await query(last.toStation, target)) {
+      const xfer = connectLegs(last, train, partial.arriveAbs, sameCity);
+      if (!xfer) continue;
+      const journey: Journey = {
+        legs: [...partial.journey.legs, train],
+        transfers: [...partial.journey.transfers, xfer],
+      };
+      if (cityOf(train.toStation) === destCity) {
+        done.push(journey);
+      } else {
+        const arr = arriveAbs(partial.arriveAbs, train.duration, train.arriveTime, train.startTime);
+        next.push({ journey, arriveAbs: arr });
+      }
+    }
+  }
 
   // 首层：出发地 → 各枢纽
   let layer: Partial[] = [];
@@ -157,56 +210,32 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
       layer.push({ journey: { legs: [train], transfers: [] }, arriveAbs: arr });
     }
   }
-
-  /** 从 partial 出发，尝试接到 target，返回新部分行程或（到终点时）结果 */
-  async function hop(
-    partial: Partial,
-    target: string,
-  ): Promise<{ done: true } | { done: false; partial: Partial } | null> {
-    const last = partial.journey.legs[partial.journey.legs.length - 1]!;
-    if (cityOf(target) === cityOf(last.toStation)) return null;
-    for (const train of await query(last.toStation, target)) {
-      const xfer = connectLegs(last, train, partial.arriveAbs, sameCity);
-      if (!xfer) continue;
-      const journey: Journey = {
-        legs: [...partial.journey.legs, train],
-        transfers: [...partial.journey.transfers, xfer],
-      };
-      if (cityOf(train.toStation) === destCity) {
-        results.push(journey);
-        return { done: true };
-      }
-      const arr = arriveAbs(partial.arriveAbs, train.duration, train.arriveTime, train.startTime);
-      return { done: false, partial: { journey, arriveAbs: arr } };
-    }
-    return null;
-  }
+  // ⚠️ 首层**不按到达时间剪枝**：晚到的首程能接上不同的第二程，剪掉会丢一次换乘结果。
+  // 只保留束宽上限作为兜底。
+  layer = p.beamSize != null ? pruneLayer(layer, cityOf, undefined, p.beamSize) : layer;
 
   for (let depth = 0; depth < p.maxTransfers; depth++) {
-    // 第一趟：所有部分行程先试「直达终点」——保证浅层结果先于深扩展被枚举，
-    // 边预算耗尽时被牺牲的是更深、更差的方案。
+    // 第一趟：所有部分行程先试「直达终点」——浅层（少换乘）结果优先。
     if (edges < budget) {
       for (const partial of layer) {
         if (edges >= budget) break;
-        await hop(partial, p.to);
+        await connect(partial, p.to, results, []);
       }
     }
-    // 第二趟：再向其他枢纽扩展，形成下一层。
-    // ⚠️ 必须为本层「直达终点」之外的更深一层预留配额，否则深扩展会把预算吃光，
-    // 导致一次换乘（更优）结果全被挤掉。
+    if (depth + 1 >= p.maxTransfers) break;
+
+    // 第二趟：向其他枢纽扩展形成下一层；为下一层的『直达终点』预留配额。
     const reserve = p.hubs.length;
     const next: Partial[] = [];
-    if (depth + 1 < p.maxTransfers) {
-      for (const partial of layer) {
+    for (const partial of layer) {
+      if (edges + reserve >= budget) break;
+      for (const hub of p.hubs) {
         if (edges + reserve >= budget) break;
-        for (const hub of p.hubs) {
-          if (edges + reserve >= budget) break;
-          const r = await hop(partial, hub);
-          if (r && !r.done) next.push(r.partial);
-        }
+        await connect(partial, hub, [], next);
       }
     }
-    layer = next;
+    // 中间层（2 段及以上）按到达时间支配剪枝，控制二次换乘的规模（T49）
+    layer = pruneLayer(next, cityOf, p.beamPerStation, p.beamSize);
   }
 
   return results;

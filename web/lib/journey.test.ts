@@ -183,3 +183,53 @@ test('分层 BFS：预算紧张时优先完成浅层（一次换乘）行程', a
   expect(js.map((j) => j.legs.map((l) => l.trainCode).join('+'))).toContain('G1+G2');
   expect(js.every((j) => j.legs.length === 2)).toBe(true);
 });
+
+// ── 束搜索剪枝（T49：控制每层规模）─────────────────────────
+test('支配剪枝：只作用于中间层，首层不剪（晚到首程能接不同第二程）', async () => {
+  const early = train({ trainNo: '1', trainCode: 'G1', fromStation: 'O', toStation: 'H', startTime: '08:00', arriveTime: '09:00', duration: '01:00' });
+  const late = train({ trainNo: '9', trainCode: 'G9', fromStation: 'O', toStation: 'H', startTime: '10:00', arriveTime: '11:00', duration: '01:00' });
+  const hd1 = train({ trainNo: '2', trainCode: 'G2', fromStation: 'H', toStation: 'D', startTime: '09:30', arriveTime: '10:30', duration: '01:00' });
+  const hd2 = train({ trainNo: '3', trainCode: 'G3', fromStation: 'H', toStation: 'D', startTime: '11:30', arriveTime: '12:30', duration: '01:00' });
+  const api = fakeApi({ 'O>H': [early, late], 'H>D': [hd1, hd2] });
+
+  const js = await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs: ['H'], maxTransfers: 1, beamPerStation: 1 },
+    api,
+  );
+  // 首层不剪：G1 与 G9 都在，各自能接上可行第二程
+  expect(js.map((j) => j.legs.map((l) => l.trainCode).join('+')).sort())
+    .toEqual(['G1+G2', 'G1+G3', 'G9+G3']);
+});
+
+test('支配剪枝：中间层同一到达站只保留最早到达（beamPerStation=1）', async () => {
+  // 三段：O→H（两班，早/晚）→ K → D。第二轮扩展得到 H→K 的部分行程，
+  // 同一到达站 K 的两条部分行程，早到者保留。
+  const early = train({ trainNo: '1', trainCode: 'G1', fromStation: 'O', toStation: 'H', startTime: '08:00', arriveTime: '09:00', duration: '01:00' });
+  const late = train({ trainNo: '9', trainCode: 'G9', fromStation: 'O', toStation: 'H', startTime: '09:05', arriveTime: '10:00', duration: '00:55' });
+  const hk1 = train({ trainNo: '2', trainCode: 'G2', fromStation: 'H', toStation: 'K', startTime: '09:30', arriveTime: '10:30', duration: '01:00' });
+  const hk2 = train({ trainNo: '3', trainCode: 'G3', fromStation: 'H', toStation: 'K', startTime: '10:30', arriveTime: '11:30', duration: '01:00' });
+  const kd = train({ trainNo: '4', trainCode: 'G4', fromStation: 'K', toStation: 'D', startTime: '12:00', arriveTime: '14:00', duration: '02:00' });
+  const api = fakeApi({ 'O>H': [early, late], 'H>K': [hk1, hk2], 'K>D': [kd] });
+
+  const js = await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs: ['H', 'K'], maxTransfers: 2, beamPerStation: 1 },
+    api,
+  );
+  // 到达 K 的两条部分行程只留最早（G1+G2 到 10:30），故只有 G1+G2+G4
+  const viaK = js.filter((j) => j.legs.length === 3).map((j) => j.legs.map((l) => l.trainCode).join('+'));
+  expect(viaK).toEqual(['G1+G2+G4']);
+});
+
+test('束搜索：每层部分行程总数受 beamSize 限制', async () => {
+  const routes: Record<string, Train[]> = {};
+  for (let i = 0; i < 6; i++) {
+    routes[`O>H${i}`] = [train({ trainNo: `g${i}`, trainCode: `G${i}`, fromStation: 'O', toStation: `H${i}`, startTime: '08:00', arriveTime: '09:00', duration: '01:00' })];
+    routes[`H${i}>D`] = [train({ trainNo: `d${i}`, trainCode: `D${i}`, fromStation: `H${i}`, toStation: 'D', startTime: '09:30', arriveTime: '11:00', duration: '01:30' })];
+  }
+  const hubs = Array.from({ length: 6 }, (_, i) => `H${i}`);
+  const js = await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs, maxTransfers: 1, beamSize: 2 },
+    fakeApi(routes),
+  );
+  expect(js).toHaveLength(2);
+});

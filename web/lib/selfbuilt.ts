@@ -51,6 +51,10 @@ export interface SelfBuiltParams {
   maxEdges?: number;
   /** 输出上限，默认 200（T45） */
   maxResults?: number;
+  /** 同一到达城市每层最多保留几条部分行程（T49） */
+  beamPerStation?: number;
+  /** 每层部分行程总数上限（T49） */
+  beamSize?: number;
   /** 经停补查的候选上限（T43 请求量收敛），默认 60 */
   maxDetourChecks?: number;
 }
@@ -89,6 +93,8 @@ export async function runSelfBuiltTransfer(
     maxTransfers: p.maxTransfers,
     ...(p.cityOf ? { cityOf: p.cityOf } : {}),
     ...(p.maxEdges != null ? { maxEdges: p.maxEdges } : {}),
+    ...(p.beamPerStation != null ? { beamPerStation: p.beamPerStation } : {}),
+    ...(p.beamSize != null ? { beamSize: p.beamSize } : {}),
   };
 
   const raw = await planJourneys(params, api);
