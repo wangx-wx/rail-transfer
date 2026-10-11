@@ -56,12 +56,16 @@ test('QueryForm：querying 时两个按钮进入 loading 态', () => {
   expect(transfer.className).toContain('ant-btn-loading');
 });
 
-test('QueryForm：口令默认显示，保留原输入方式和查询参数', async () => {
+test('QueryForm：口令默认隐藏，可切换显示并带上查询参数', async () => {
   const onTransfer = vi.fn();
   const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} onSelfBuilt={vi.fn()} />);
-  const token = screen.getByRole('textbox', { name: '口令' }) as HTMLInputElement;
-  expect(token.closest('details')).toBeNull();
+  const token = container.querySelector<HTMLInputElement>('#token')!;
+  expect(token.type).toBe('password');
+  const toggle = container.querySelector<HTMLElement>('.ant-input-password-icon')!;
+  fireEvent.click(toggle);
   expect(token.type).toBe('text');
+  fireEvent.click(toggle);
+  expect(token.type).toBe('password');
   fireEvent.change(token, { target: { value: 'sample-token' } });
   fireEvent.change(container.querySelector('#from')!, { target: { value: '北京' } });
   fireEvent.change(container.querySelector('#to')!, { target: { value: '上海' } });

@@ -142,7 +142,7 @@ export default function QueryForm({ querying, onDirect, onTransfer, onSelfBuilt 
       </Form.Item>
 
       <Form.Item className="query-access" name="token" label="口令">
-        <Input placeholder="可选" autoComplete="off" />
+        <Input.Password placeholder="可选" autoComplete="new-password" visibilityToggle />
       </Form.Item>
 
       <div className="query-actions">
