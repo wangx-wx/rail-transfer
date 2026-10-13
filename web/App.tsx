@@ -6,14 +6,16 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { Modal } from 'antd';
 
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
 import { runQuery } from './lib/orchestrate.ts';
-import { runSelfBuiltQuery } from './lib/selfbuilt-query.ts';
+import { runSelfBuiltQuery, estimateSelfBuiltRequests, selectHubCodes } from './lib/selfbuilt-query.ts';
 import { createSelfBuiltDeps } from './lib/selfbuilt-adapter.ts';
 import { buildHubPool } from './lib/hubs.ts';
 import { parseReachability, type ReachGraph } from './lib/reach.ts';
+import { MAX_HUB_DETOUR_RATIO, MAX_HUBS } from '../shared/constants.ts';
 import { REACHABILITY_EDGES } from './data/reachability.ts';
 import { CITY_COORDS } from './data/coords.ts';
 import { cityOfStation } from './lib/city.ts';
@@ -268,31 +270,54 @@ export default function App() {
 
     try {
       if (!reachRef.current) reachRef.current = parseReachability(REACHABILITY_EDGES);
+      const rateLimit = { concurrency: 3, intervalMs: 300 } as const;
+      const params = {
+        from: ctx.from.code,
+        to: ctx.to.code,
+        date: ctx.date,
+        hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
+        maxTransfers: ctx.maxTransfers ?? 1,
+        graph: reachRef.current,
+        coords: CITY_COORDS,
+        cityOf: cityOfStation,
+        maxHubRatio: MAX_HUB_DETOUR_RATIO,
+        maxHubs: MAX_HUBS,
+        maxDetourChecks: 20,
+        beamPerStation: 24,
+        beamSize: 480,
+      };
+
+      // 请求量预估 + 超限确认（T50/D65）——发起前先算，避免静默上百请求
+      const est = estimateSelfBuiltRequests(params, { intervalMs: rateLimit.intervalMs });
+      if (est.seconds >= 15) {
+        const ok = await new Promise<boolean>((resolve) => {
+          Modal.confirm({
+            title: '请求量较大，确认发起？',
+            content: `预计向 12306 发起约 ${est.requests} 次请求（${est.hubs} 个枢纽），约需 ${est.seconds} 秒。不含后续查价。`,
+            okText: '继续',
+            cancelText: '取消',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!ok) {
+          setStatus({ text: '已取消自研查询', kind: 'info' });
+          return;
+        }
+      }
+
+      // 边预算按预筛后枢纽数 D 取真实上界（T41）：一次换乘 2D、二次换乘 D²+2D
+      const d = selectHubCodes(params).length;
+      const maxEdges = params.maxTransfers === 1 ? 2 * d : d * d + 2 * d;
+
       const buildDeps = createSelfBuiltDeps(
         { from: ctx.from.code, to: ctx.to.code, date: ctx.date, hubs: [], maxTransfers: 1 },
         { token: ctx.token, base: API_BASE },
       );
-      const r = await runSelfBuiltQuery(
-        {
-          from: ctx.from.code,
-          to: ctx.to.code,
-          date: ctx.date,
-          hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
-          maxTransfers: ctx.maxTransfers ?? 1,
-          graph: reachRef.current,
-          coords: CITY_COORDS,
-          cityOf: cityOfStation,
-          maxEdges: 400,
-          maxDetourChecks: 60,
-          beamPerStation: 24,
-          beamSize: 480,
-          rateLimit: { concurrency: 3, intervalMs: 300 },
-        },
-        buildDeps,
-      );
+      const r = await runSelfBuiltQuery({ ...params, maxEdges, rateLimit }, buildDeps);
       setJourneys(r.journeys);
       setStatus({
-        text: `自研中转 ${r.journeys.length} 条方案（扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
+        text: `自研中转 ${r.journeys.length} 条方案（${r.hubs.length} 个枢纽，扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
         kind: 'info',
       });
     } catch (e) {

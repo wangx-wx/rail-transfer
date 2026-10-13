@@ -5,12 +5,14 @@
  * 分组逻辑来自 journeyView.groupByTransfers（纯函数，已单测）。
  */
 
-import { Button, Card, Collapse, Empty, Space, Tag } from 'antd';
+import { Button, Card, Collapse, Empty, Segmented, Space, Tag } from 'antd';
+import { useState } from 'react';
 
 import JourneyTimes from './JourneyTimes.tsx';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
 import { durationLabel, priceKey, priceLabel, seatPrices } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
+import { sortJourneys, type SortMode } from '../lib/journeys.ts';
 import type { ScoredJourney } from '../lib/selfbuilt.ts';
 
 interface Props {
@@ -163,32 +165,79 @@ function JourneyCard({
   );
 }
 
+/** 每组默认展开的方案数；其余折叠在「展开更多」后（零请求、数据已在内存） */
+const TOP_PER_GROUP = 5;
+
 export default function SelfBuiltList({ journeys, date, stationNames, prices, loadingPrice, onQueryPrice }: Props) {
+  const [sortMode, setSortMode] = useState<SortMode>('weighted');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   if (!journeys.length) return <Empty description="没有自研中转方案" />;
 
   const name = (code: string): string => stationNames[code] ?? code;
-  const groups = groupByTransfers(journeys);
+  const sorted = sortJourneys(journeys, { mode: sortMode }) as ScoredJourney[];
+  const groups = groupByTransfers(sorted);
 
-  const items = groups.map((g) => ({
-    key: String(g.transfers),
-    label: (
-      <Space>
-        {journeyTitle(g.transfers)}
-        <Tag>{g.journeys.length} 条</Tag>
-      </Space>
-    ),
-    children: g.journeys.map((j, i) => (
-      <JourneyCard
-        key={`${j.legs.map((l) => l.trainNo).join('-')}-${i}`}
-        journey={j}
-        date={date}
-        name={name}
-        prices={prices}
-        loadingPrice={loadingPrice}
-        onQueryPrice={onQueryPrice}
-      />
-    )),
-  }));
+  const items = groups.map((g) => {
+    const gkey = String(g.transfers);
+    const open = expanded.has(gkey);
+    const visible = open ? g.journeys : g.journeys.slice(0, TOP_PER_GROUP);
+    const rest = g.journeys.length - visible.length;
+    return {
+      key: gkey,
+      label: (
+        <Space>
+          {journeyTitle(g.transfers)}
+          <Tag>{g.journeys.length} 条</Tag>
+        </Space>
+      ),
+      children: (
+        <>
+          {visible.map((j, i) => (
+            <JourneyCard
+              key={`${j.legs.map((l) => l.trainNo).join('-')}-${i}`}
+              journey={j}
+              date={date}
+              name={name}
+              prices={prices}
+              loadingPrice={loadingPrice}
+              onQueryPrice={onQueryPrice}
+            />
+          ))}
+          {(rest > 0 || open) && (
+            <Button
+              type="link"
+              block
+              onClick={() =>
+                setExpanded((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(gkey)) next.delete(gkey);
+                  else next.add(gkey);
+                  return next;
+                })
+              }
+            >
+              {open ? '收起' : `展开更多（还有 ${rest} 条）`}
+            </Button>
+          )}
+        </>
+      ),
+    };
+  });
 
-  return <Collapse className="hub-list" defaultActiveKey={groups.map((g) => String(g.transfers))} items={items} />;
+  return (
+    <>
+      <div className="list-toolbar">
+        <Segmented<SortMode>
+          size="small"
+          value={sortMode}
+          onChange={setSortMode}
+          options={[
+            { label: '综合推荐', value: 'weighted' },
+            { label: '按总耗时', value: 'time' },
+          ]}
+        />
+      </div>
+      <Collapse className="hub-list" defaultActiveKey={groups.map((g) => String(g.transfers))} items={items} />
+    </>
+  );
 }

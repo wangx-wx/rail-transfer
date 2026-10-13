@@ -156,3 +156,76 @@ test('SelfBuiltList：二等座价格行高亮（方案B）', () => {
   const refRow = container.querySelector('.price-row--ref');
   expect(refRow?.querySelector('.price-name')?.textContent).toBe('二等座');
 });
+
+// ── 分组 Top-5 + 展开更多 + 排序切换（C1/C2）────────────────
+import { fireEvent } from '@testing-library/react';
+
+/** 造一组同换乘次数、可区分的方案（车次号递增，耗时递增） */
+function manyJourneys(n: number): ScoredJourney[] {
+  return Array.from({ length: n }, (_, i) =>
+    journey({
+      totalMinutes: 200 + i * 10,
+      legs: [
+        leg(`G${1000 + i}`, 'GZQ', 'WHN', '08:00', '11:00', '03:00'),
+        leg(`H${1000 + i}`, 'WHN', 'SNN', '11:20', '13:30', '02:10'),
+      ],
+    }),
+  );
+}
+
+test('SelfBuiltList：每组默认只展开 Top-5，其余折叠为「展开更多」', () => {
+  render(
+    <SelfBuiltList
+      journeys={manyJourneys(8)}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  // 前 5 条车次可见（车次号在行程/查价两处渲染，故用 getAllByText）
+  expect(screen.getAllByText('G1000').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('G1004').length).toBeGreaterThan(0);
+  // 第 6 条不可见
+  expect(screen.queryAllByText('G1005')).toHaveLength(0);
+  // 有「展开更多」按钮，且标明剩余条数
+  expect(screen.getByText(/展开更多/).textContent).toContain('3');
+});
+
+test('SelfBuiltList：点「展开更多」显示全部（零请求）', () => {
+  render(
+    <SelfBuiltList
+      journeys={manyJourneys(8)}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  fireEvent.click(screen.getByText(/展开更多/));
+  expect(screen.getAllByText('G1007').length).toBeGreaterThan(0);
+});
+
+test('SelfBuiltList：排序切换「按总耗时」可改变同组内顺序', () => {
+  // 同组（均一次换乘）：A 耗时短但疑似绕远（加权被罚），B 耗时长但不绕
+  const a = journey({ totalMinutes: 250, detour: true, legs: [leg('A1', 'GZQ', 'WHN', '08:00', '11:00', '03:00'), leg('A2', 'WHN', 'SNN', '11:20', '13:30', '02:10')] });
+  const b = journey({ totalMinutes: 300, detour: false, legs: [leg('B1', 'GZQ', 'WHN', '08:00', '11:00', '03:00'), leg('B2', 'WHN', 'SNN', '11:20', '13:30', '02:10')] });
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[a, b]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const firstCode = (): string | null | undefined => container.querySelector('.leg-heading strong')?.textContent;
+  // 默认加权：B（350）< A（250+45+60=355）→ B 在前
+  expect(firstCode()).toBe('B1');
+  // 切「按总耗时」：A（250）在前
+  fireEvent.click(screen.getByText('按总耗时'));
+  expect(firstCode()).toBe('A1');
+});
