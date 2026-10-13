@@ -21,7 +21,7 @@ const CODES = [
   'NJH', 'WHN', 'XAY', 'CSQ', 'ZZF', 'JNK', 'QDK', 'SYT',
   'DLT', 'HBB', 'CCT', 'SJP', 'TYV', 'HFH', 'FZS', 'XMS',
   'NCG', 'KMM', 'GIW', 'NNZ', 'LZJ', 'XNO', 'YIJ', 'WAR',
-  'HHC', 'SZH', 'WXH', 'CZH', 'NGH', 'RZH',
+  'HHC', 'SZH', 'WXH', 'CZH', 'NGH', 'RZH', 'UUH',
   // 用户常见 OD 端（非枢纽）：保证方向过滤的起点/终点有坐标
   'GZQ', 'SNN', 'ZGE', 'LSO', 'YTM', 'QHX', 'MDB', 'FOC', 'WKK', 'YAK',
 ];

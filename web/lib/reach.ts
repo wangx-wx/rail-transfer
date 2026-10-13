@@ -171,3 +171,64 @@ export function filterByDirection(
 ): string[] {
   return hubs.filter((h) => onDirection(coords[from], coords[to], coords[h]));
 }
+
+// ── 几何绕行：排序 / 硬砍 / 截断（T40 落实）────────────────
+
+/** 两点欧氏距离（度）；缺任一坐标返回 null */
+function dist(a: [number, number] | undefined, b: [number, number] | undefined): number | null {
+  if (!a || !b) return null;
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+}
+
+/**
+ * 枢纽的**几何绕行比值**：`(from→hub 距离 + hub→to 距离) ÷ from→to 直线距离`。
+ *
+ * - `1.0` = 枢纽恰好落在同一直线上；越大越绕（如北京→上海经武汉 ≈ 1.64）。
+ * - 缺任一坐标返回 null（不判、不砍——宁可多查）。
+ * - 与 `onDirection` 同为**粗略**口径（经/纬度不按真实里程归一，T48）。
+ */
+export function detourRatio(coords: CityCoords, from: string, to: string, hub: string): number | null {
+  const base = dist(coords[from], coords[to]);
+  const d1 = dist(coords[from], coords[hub]);
+  const d2 = dist(coords[hub], coords[to]);
+  if (base == null || d1 == null || d2 == null || base === 0) return null;
+  return (d1 + d2) / base;
+}
+
+/** 枢纽选留参数 */
+export interface HubSelection {
+  /** 几何硬砍线：绕行比值 > 此值的枢纽**整个剔除**（枚举前，零请求）；缺坐标不砍 */
+  maxRatio?: number;
+  /** 排序后最多保留几个（兜底，防大池溢出） */
+  maxHubs?: number;
+  /** 可达性分档（可达 = 0，否则 1）；**仅用于比值相同时破平** */
+  tierOf?: (city: string) => number;
+}
+
+/**
+ * 枢纽选留（T40 落实）：几何硬砍 → 按绕行比值升序 → 截断。
+ *
+ * ⚠️ 排序以**比值为主、分档仅破平**：实测若让可达性分档主导，会把「低比值但
+ * 可达图无记录」的枢纽（如北京→昆明的郑州/重庆/贵阳）挤出 Top-K——弯曲干线的
+ * 正确入口会被误杀。可达图是稀疏子集（T47），不能主导排序。
+ * 缺比值的枢纽排在最后（宁可多查，只是不占前排）。
+ */
+export function selectHubs(
+  coords: CityCoords,
+  from: string,
+  to: string,
+  hubs: string[],
+  opts: HubSelection = {},
+): string[] {
+  const scored = hubs.map((h) => ({ h, r: detourRatio(coords, from, to, h) }));
+  const kept =
+    opts.maxRatio == null ? scored : scored.filter((x) => x.r == null || x.r <= opts.maxRatio!);
+  const tier = opts.tierOf ?? (() => 0);
+  kept.sort((a, b) => {
+    const ra = a.r ?? Number.POSITIVE_INFINITY;
+    const rb = b.r ?? Number.POSITIVE_INFINITY;
+    return ra - rb || tier(a.h) - tier(b.h);
+  });
+  const out = kept.map((x) => x.h);
+  return opts.maxHubs != null ? out.slice(0, opts.maxHubs) : out;
+}

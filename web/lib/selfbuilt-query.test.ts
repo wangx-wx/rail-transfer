@@ -108,3 +108,35 @@ test('编排：方向过滤剔除反方向枢纽（广州→十堰 剔除深圳�
   expect(r.hubs).toEqual(['WHN']);
   expect(calls).not.toContain('GZQ>IOQ');
 });
+
+// ── 几何硬砍 + 请求量预估（T40/T50）────────────────────────
+import { estimateSelfBuiltRequests, selectHubCodes } from './selfbuilt-query.ts';
+
+const COORDS = { O: [0, 0], D: [10, 0], NEAR: [5, 0], FAR: [5, 8] } satisfies Record<string, [number, number]>;
+
+test('selectHubCodes：几何硬砍剔除绕行枢纽（缺坐标不砍）', () => {
+  const p = {
+    from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const,
+    hubs: ['NEAR', 'FAR'],
+    coords: COORDS,
+    maxHubRatio: 1.2,
+  };
+  // NEAR 在直线上（ratio≈1），FAR 明显绕（ratio>1.2）
+  expect(selectHubCodes(p)).toEqual(['NEAR']);
+});
+
+test('estimateSelfBuiltRequests：一次换乘 ≈ 2N + detour×2', () => {
+  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const, hubs: ['NEAR'], coords: COORDS };
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 20 });
+  // 1 枢纽：2×1 + 20×2 = 42；42×300ms = 12.6s → 13
+  expect(est.hubs).toBe(1);
+  expect(est.requests).toBe(42);
+  expect(est.seconds).toBe(13);
+});
+
+test('estimateSelfBuiltRequests：二次换乘 ≈ N²+2N + detour×2', () => {
+  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 2 as const, hubs: ['NEAR'], coords: COORDS };
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 10 });
+  // 1²+2×1 + 10×2 = 23
+  expect(est.requests).toBe(23);
+});

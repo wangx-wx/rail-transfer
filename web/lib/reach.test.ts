@@ -140,3 +140,43 @@ test('filterByDirection：无坐标的枢纽保留（不误杀）', () => {
   const coords = { 广州: [113.26, 23.15], 十堰: [110.78, 32.60], 深圳: [114.03, 22.61] } satisfies CityCoords;
   expect(filterByDirection(coords, '广州', '十堰', ['深圳', '武汉'])).toEqual(['武汉']);
 });
+
+// ── 几何绕行：排序 / 硬砍 / 截断（T40 落实）────────────────
+import { detourRatio, selectHubs } from './reach.ts';
+
+const RC = { 北京: [116.38, 39.87], 上海: [121.32, 31.19], 济南: [116.99, 36.67], 南京: [118.80, 32.09], 武汉: [114.42, 30.61] } satisfies CityCoords;
+
+test('detourRatio：落在线上的枢纽 ≈ 1.0，反向绕行的 > 1', () => {
+  const rJinan = detourRatio(RC, '北京', '上海', '济南')!;
+  const rWuhan = detourRatio(RC, '北京', '上海', '武汉')!;
+  expect(rJinan).toBeGreaterThan(0.99);
+  expect(rJinan).toBeLessThan(1.1);
+  expect(rWuhan).toBeGreaterThan(1.3); // 武汉偏南 → 绕
+});
+
+test('detourRatio：缺坐标返回 null（不判）', () => {
+  expect(detourRatio(RC, '北京', '上海', '拉萨')).toBeNull();
+});
+
+test('selectHubs：几何硬砍 maxRatio —— 剔除明显绕行的枢纽', () => {
+  // 北京→上海：济南(1.0x) 保留，武汉(1.6x+) 砍
+  const kept = selectHubs(RC, '北京', '上海', ['济南', '武汉'], { maxRatio: 1.3 });
+  expect(kept).toEqual(['济南']);
+});
+
+test('selectHubs：缺坐标不砍（宁可多查）', () => {
+  const kept = selectHubs(RC, '北京', '上海', ['济南', '拉萨'], { maxRatio: 1.2 });
+  expect(kept).toContain('拉萨');
+});
+
+test('selectHubs：按比值升序（线上的排前）', () => {
+  const kept = selectHubs(RC, '北京', '上海', ['武汉', '南京', '济南']);
+  expect(kept[0]).toBe('济南');
+  expect(kept[kept.length - 1]).toBe('武汉');
+});
+
+test('selectHubs：平局用 tier 破平，且 maxHubs 截断', () => {
+  const kept = selectHubs(RC, '北京', '上海', ['南京', '济南'], { maxHubs: 1, tierOf: (c) => (c === '南京' ? 0 : 1) });
+  expect(kept).toHaveLength(1);
+  expect(kept[0]).toBe('济南'); // 济南比值更小，优先
+});

@@ -58,6 +58,7 @@ const MAJOR_CITY_MAIN_STATIONS = {
   海口: ['VUQ'],
   三亚: ['SEQ'],
   苏州: ['SZH', 'OHH', 'ZAU', 'SMU'],
+  徐州: ['UUH', 'XCH'],
   无锡: ['WXH', 'WGH', 'KYH', 'IFH'],
   常州: ['CZH', 'ESH', 'JTU', 'WJU'],
   宁波: ['NGH'],

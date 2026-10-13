@@ -3,9 +3,9 @@
  *
  * 生成：node tools/gen-stations.mjs（纯静态，零网络）
  * 来源：spike/station_name.js（城市分组）+ 固化主站清单
- * 生成日期：2026-10-08
+ * 生成日期：2026-10-13
  *
- * CITY_STATIONS：40 个主要城市，含 Top-N 主站（D18）
+ * CITY_STATIONS：41 个主要城市，含 Top-N 主站（D18）
  * ALL_CITIES：全部 432 个城市 → 代表站码（兜底，保证任意城市可查）
  * STATION_NAMES：全部 3404 个站码 → 站名（用于展示始发/终到站）
  * STATION_CITIES：全部 3404 个站码 → 城市名（同城判定，T37）
@@ -340,6 +340,14 @@ export const CITY_STATIONS = {
       "OHH",
       "ZAU",
       "SMU"
+    ]
+  },
+  "徐州": {
+    "code": "UUH",
+    "name": "徐州",
+    "stations": [
+      "UUH",
+      "XCH"
     ]
   },
   "无锡": {

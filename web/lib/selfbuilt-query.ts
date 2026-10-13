@@ -12,7 +12,7 @@
 
 import { createGateway } from './gateway.ts';
 import type { Gateway } from './gateway.ts';
-import { orderByReachability, filterByDirection } from './reach.ts';
+import { canReach, filterByDirection, selectHubs } from './reach.ts';
 import type { CityCoords } from './reach.ts';
 import type { ReachGraph } from './reach.ts';
 import { runSelfBuiltTransfer } from './selfbuilt.ts';
@@ -47,6 +47,10 @@ export interface SelfBuiltQueryParams {
   coords?: CityCoords;
   /** 站码 → 城市键（同城判定） */
   cityOf?: (stationCode: string) => string;
+  /** 几何硬砍线（T40）：绕行比值 > 此值的枢纽整个剔除；缺省不砍 */
+  maxHubRatio?: number;
+  /** 排序后枢纽上限（T40 兜底，防大池溢出）；缺省不截断 */
+  maxHubs?: number;
   /** 扩展边硬上限（T41） */
   maxEdges?: number;
   /** 同一到达城市每层最多保留几条部分行程（支配剪枝，T49） */
@@ -80,37 +84,52 @@ function withGateway(deps: SelfBuiltQueryDeps, gateway: Gateway): SelfBuiltQuery
   };
 }
 
+/**
+ * 枢纽选留（T39 可达图分档 + T40 方向过滤 + 几何硬砍 + 截断），返回站码。
+ *
+ * 纯函数、零网络——供 `runSelfBuiltQuery` 与请求量预估共用，保证两处口径一致。
+ * ⚠️ 可达图节点是**城市名**，hubs 是**站码**，故先翻城市名再过滤，最后翻回站码。
+ */
+export function selectHubCodes(p: SelfBuiltQueryParams): string[] {
+  const cityOf = p.cityOf ?? ((c: string) => c);
+  const fromCity = cityOf(p.from);
+  const toCity = cityOf(p.to);
+  const cityHubs = [...new Set(p.hubs.map(cityOf))];
+  // 方向过滤（T40）：作用于城市名，与后续选留取交集
+  let keptCities = cityHubs;
+  if (p.coords) {
+    const directional = new Set(filterByDirection(p.coords, fromCity, toCity, keptCities));
+    keptCities = keptCities.filter((c) => directional.has(c));
+  }
+  // 枢纽选留（T40 落实）：几何硬砍 → 按绕行比值升序（可达性分档仅破平）→ 截断。
+  const tierOf = (city: string): number =>
+    p.graph && canReach(p.graph, fromCity, city) && canReach(p.graph, city, toCity) ? 0 : 1;
+  // 有坐标 → 几何硬砍 + 比值排序（分档破平）；无坐标 → 仅按可达性分档排（稳定，保原序）
+  const selectedCities = p.coords
+    ? selectHubs(p.coords, fromCity, toCity, keptCities, {
+        maxRatio: p.maxHubRatio,
+        maxHubs: p.maxHubs,
+        tierOf,
+      })
+    : [...keptCities].sort((a, b) => tierOf(a) - tierOf(b));
+  // 按选留顺序重排站码（同城只留一个代表，保持稳定序）
+  const seen = new Set<string>();
+  const hubs: string[] = [];
+  for (const city of selectedCities) {
+    const code = p.hubs.find((h) => cityOf(h) === city);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    hubs.push(code);
+  }
+  return hubs;
+}
+
 /** 执行一次自研查询 */
 export async function runSelfBuiltQuery(
   p: SelfBuiltQueryParams,
   deps: SelfBuiltQueryDeps,
 ): Promise<SelfBuiltQueryResult> {
-  // 枢纽预筛（T39 可达图）+ 走行方向过滤（T40）。
-  // ⚠️ 可达图节点是**城市名**，而 hubs 是**站码**，故先翻成城市名再过滤，
-  // 最后翻回站码（保持唯一，避免同城多站重复）。
-  const cityOf = p.cityOf ?? ((c: string) => c);
-  const fromCity = cityOf(p.from);
-  const toCity = cityOf(p.to);
-  const cityHubs = [...new Set(p.hubs.map(cityOf))];
-  // 可达图只用于**排序**（稀疏子集，不能当硬筛——见 reach.orderByReachability）
-  const orderedCities = p.graph
-    ? orderByReachability(p.graph, fromCity, toCity, cityHubs)
-    : cityHubs;
-  const keptCities = new Set(orderedCities);
-  // 方向过滤（T40）：作用于城市名，与可达图预筛取交集
-  if (p.coords) {
-    const directional = new Set(filterByDirection(p.coords, fromCity, toCity, [...keptCities]));
-    for (const c of [...keptCities]) if (!directional.has(c)) keptCities.delete(c);
-  }
-  // 按城市排序结果重排站码（同城只留一个代表，保持稳定序）
-  const seen = new Set<string>();
-  const hubs: string[] = [];
-  for (const city of orderedCities) {
-    const code = p.hubs.find((h) => cityOf(h) === city);
-    if (!code || !keptCities.has(city) || seen.has(code)) continue;
-    seen.add(code);
-    hubs.push(code);
-  }
+  const hubs = selectHubCodes(p);
 
   const wrapped = p.rateLimit ? withGateway(deps, createGateway(p.rateLimit)) : deps;
 
@@ -132,4 +151,40 @@ export async function runSelfBuiltQuery(
   );
 
   return { ...r, hubs };
+}
+
+/** 一次查询的请求量预估（T50） */
+export interface RequestEstimate {
+  /** 预筛后的枢纽数 */
+  hubs: number;
+  /** 预估上游请求数（枚举边 + 经停补查） */
+  requests: number;
+  /** 按限流参数折算的预计秒数 */
+  seconds: number;
+  /** 该预估一次换乘/二次换乘 */
+  maxTransfers: 1 | 2;
+}
+
+/**
+ * 预估一次自研查询的请求量与耗时（T50，纯前端、零网络）。
+ *
+ * `N` = 预筛后枢纽数，`T` = 换乘次数，`K_detour` = 经停补查候选上限：
+ * - 枚举边：一次换乘 `≈ 2N`；二次换乘 `≈ N² + 2N`。
+ * - 经停补查：`K_detour × 2`（每程 1 次，实测 2 段居多）。
+ *
+ * ⚠️ 旧 T50 只估算 `2N`，**漏掉了经停补查**（实测的大头）——此处补上。
+ * ⚠️ 不含查价 / 买短乘长（另走 `api.price`，不经本编排）。
+ *
+ * 耗时按 `请求数 ÷ (1/间隔)` 折算（T41：相邻请求间隔 `intervalMs`）。
+ */
+export function estimateSelfBuiltRequests(
+  p: SelfBuiltQueryParams,
+  opts: { intervalMs: number; detourChecks?: number },
+): RequestEstimate {
+  const n = selectHubCodes(p).length;
+  const t = p.maxTransfers;
+  const edges = t === 1 ? 2 * n : n * n + 2 * n;
+  const detour = (opts.detourChecks ?? 20) * 2;
+  const requests = edges + detour;
+  return { hubs: n, requests, seconds: Math.ceil((requests * opts.intervalMs) / 1000), maxTransfers: t };
 }
