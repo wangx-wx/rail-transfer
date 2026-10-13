@@ -107,6 +107,42 @@ export function priceLabel(price: number | null | undefined): string {
   return Number.isInteger(price) ? `¥${price}` : `¥${price.toFixed(1)}`;
 }
 
+/** 'HH:MM' → 当日分钟数；非法（含 `'----'`）返回 null */
+function clockMinutes(t: string | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((t ?? '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** 'HH:MM' 形式的**历时** → 分钟；可超 24 小时（跨天长途，如 `27:05`）。非法返回 null */
+function durationMinutes(dur: string | undefined): number | null {
+  const m = /^(\d{1,3}):(\d{2})$/.exec((dur ?? '').trim());
+  if (!m) return null;
+  const min = Number(m[2]);
+  if (min > 59) return null;
+  return Number(m[1]) * 60 + min;
+}
+
+/**
+ * 一程的**跨天天数**（T44 展示口径）：跨天到达时返回 ≥1 的天数，否则 0。
+ *
+ * ⚠️ 不能只看「到达时刻 < 发车时刻」：那会把「历时超 24h 但到达时刻数值更大」
+ * 的长途车漏判（如 10:00 发、历时 27:05 → 次日 13:05 到，而 13:05 > 10:00）。
+ * 故优先用**历时**反推：`天数 = floor((发车分钟 + 历时分钟) / 1440)`；缺历时或
+ * 历时不足跨天时，回退到「到达 < 发车 → 至少 +1 天」。
+ */
+export function dayOffset(startTime: string | undefined, arriveTime: string | undefined, duration: string | undefined): number {
+  const s = clockMinutes(startTime);
+  const dur = durationMinutes(duration);
+  if (s != null && dur != null) return Math.floor((s + dur) / 1440);
+  const a = clockMinutes(arriveTime);
+  if (s != null && a != null && a < s) return 1;
+  return 0;
+}
+
 /**
  * 分钟数 → 「x时x分」文案。
  *

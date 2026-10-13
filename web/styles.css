@@ -57,6 +57,8 @@
 .journey-end:last-child { text-align: right; }
 .journey-end strong { font-size: 27px; line-height: 1.25; font-weight: 600; letter-spacing: -.7px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .journey-end span { font-size: 13px; color: var(--rail-secondary); overflow-wrap: anywhere; }
+/* 跨天到达：到达时刻右上角 +N 上标（12306 风格，T44） */
+.day-offset { font-size: 12px; font-weight: 600; color: var(--rail-secondary); margin-left: 1px; vertical-align: super; }
 .journey-duration { min-width: 48px; padding-top: 6px; color: var(--rail-secondary); text-align: center; font-size: 12px; }
 .journey-duration i { display: block; height: 1px; background: var(--rail-line); margin-top: 8px; }
 .seat-list { display: flex; flex-wrap: wrap; gap: 6px 12px; }

@@ -168,3 +168,34 @@ test('durationLabel：非法输入 → 空串', () => {
   expect(durationLabel(NaN)).toBe('');
   expect(durationLabel(-5)).toBe('');
 });
+
+// ── 跨天天数（T44 展示口径）────────────────────────────────
+import { dayOffset } from './view.ts';
+
+test('dayOffset：同日到达 → 0', () => {
+  expect(dayOffset('08:00', '12:30', '04:30')).toBe(0);
+});
+
+test('dayOffset：夜车跨 1 天（历时反推）', () => {
+  expect(dayOffset('19:10', '07:31', '12:21')).toBe(1);
+});
+
+test('dayOffset：历时超 24h 但到达时刻数值更大 → 仍判跨天（不能只比数值）', () => {
+  // 10:00 发 + 27:05 → 次日 13:05 到；13:05 > 10:00，简比会漏判
+  expect(dayOffset('10:00', '13:05', '27:05')).toBe(1);
+});
+
+test('dayOffset：跨 2 天', () => {
+  expect(dayOffset('20:00', '22:00', '50:00')).toBe(2);
+});
+
+test('dayOffset：缺历时 → 回退「到达 < 发车」', () => {
+  expect(dayOffset('19:10', '07:31', '')).toBe(1);
+  expect(dayOffset('19:10', '07:31', '----')).toBe(1);
+  expect(dayOffset('08:00', '12:30', '')).toBe(0);
+});
+
+test('dayOffset：时刻非法 → 0', () => {
+  expect(dayOffset('----', '07:31', '12:21')).toBe(0); // 发车非法→无法反推
+  expect(dayOffset('', '', '')).toBe(0);
+});
