@@ -29,7 +29,8 @@ export function createSelfBuiltDeps(p: SelfBuiltParams, opts: AdapterOptions = {
     async directTrains(from, to): Promise<Train[]> {
       const r = await api.leftTicket({ from, to, date: p.date }, apiOpts);
       if (!r.ok) return [];
-      return parseLeftTicket(r.data).trains;
+      // 中转算法不读席别，走 lite 跳过 8 个席别对象构造（单次查询解析数万趟车）
+      return parseLeftTicket(r.data, { lite: true }).trains;
     },
 
     async stopsOf(train: Train): Promise<string[]> {

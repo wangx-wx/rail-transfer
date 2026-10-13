@@ -55,3 +55,8 @@ test('耗时阈值兜底：超过最优 2.0 倍 → 疑似绕远', () => {
   expect(isDetour(420, 200)).toBe(true);  // 2.1 倍
   expect(isDetour(200, 0)).toBe(false);   // 无基准不判
 });
+
+test('耗时阈值：1.5 倍起标记（2026-10-13 由 2.0 收紧）', () => {
+  expect(isDetour(280, 200)).toBe(false); // 1.4 倍
+  expect(isDetour(320, 200)).toBe(true);  // 1.6 倍
+});

@@ -226,3 +226,28 @@ test('parseTrainRow：解析普速车自己的席别码（Z281 → 1431）', () 
   const g531 = trains.find((t) => t.trainCode === 'G531')!;
   expect(g531.seatTypes).toBe('9MOO');
 });
+
+// ── lite 解析：中转路径跳过席别对象（B4）────────────────────
+import { parseTrainRowLite } from './parse.ts';
+
+test('parseTrainRowLite：除 seats 外字段与 parseTrainRow 完全一致', () => {
+  const raw = fixture<UpstreamEnvelope<LeftTicketData>>('left-ticket-55.json');
+  const rows = raw.data!.result!;
+  for (const row of rows.slice(0, 5)) {
+    const full = parseTrainRow(row);
+    const lite = parseTrainRowLite(row);
+    expect(lite.seats).toEqual([]);
+    expect({ ...lite, seats: full.seats }).toEqual(full);
+  }
+});
+
+test('parseLeftTicket：lite 选项跳过席别构造，其余不变', () => {
+  const raw = fixture<UpstreamEnvelope<LeftTicketData>>('left-ticket-55.json');
+  const a = parseLeftTicket(raw);
+  const b = parseLeftTicket(raw, { lite: true });
+  expect(b.trains).toHaveLength(a.trains.length);
+  expect(b.stationMap).toEqual(a.stationMap);
+  expect(b.trains[0]!.trainNo).toBe(a.trains[0]!.trainNo);
+  expect(b.trains.every((t) => t.seats.length === 0)).toBe(true);
+  expect(a.trains[0]!.seats.length).toBeGreaterThan(0);
+});

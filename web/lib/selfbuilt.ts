@@ -55,7 +55,7 @@ export interface SelfBuiltParams {
   beamPerStation?: number;
   /** 每层部分行程总数上限（T49） */
   beamSize?: number;
-  /** 经停补查的候选上限（T43 请求量收敛），默认 60 */
+  /** 经停补查的候选上限（T43 请求量收敛），默认 20 */
   maxDetourChecks?: number;
 }
 
@@ -101,21 +101,39 @@ export async function runSelfBuiltTransfer(
 
   // 回头判定：只对候选行程补查经停（T43），明确折返删除（D61）。
   // 候选可能上百条，故**先去重 + 加权排序取前 K 条**再补经停，避免上百次串行请求。
-  const ranked = sortJourneys(dedupeJourneys(raw)).slice(0, p.maxDetourChecks ?? 60);
+  const ranked = sortJourneys(dedupeJourneys(raw)).slice(0, p.maxDetourChecks ?? 20);
+
+  // 经停 memo：同一趟车会出现在多条候选行程里（D 个枢纽 × K 条候选），
+  // 按 trainNo 去重可省掉大量重复 `/api/stopover`（F1/F2）。
+  const stopsMemo = new Map<string, Promise<string[]>>();
+  const stopsOfLeg = (leg: Train): Promise<string[]> => {
+    const key = `${leg.trainNo}:${leg.fromStationNo}:${leg.toStationNo}`;
+    let hit = stopsMemo.get(key);
+    if (!hit) {
+      hit = deps.stopsOf(leg);
+      stopsMemo.set(key, hit);
+    }
+    return hit;
+  };
 
   let removed = 0;
-  let candidates: Journey[] = [];
-  for (const j of ranked) {
-    const stopsByLeg: string[][] = [];
-    for (const leg of j.legs) stopsByLeg.push(await deps.stopsOf(leg));
-    if (detectBacktrack(j.legs, stopsByLeg)) {
+  const kept: Journey[] = [];
+  // 各候选的经停并行取数（各程互不依赖），由注入网关统一节流（T41）。
+  const checked = await Promise.all(
+    ranked.map(async (j) => {
+      const stopsByLeg = await Promise.all(j.legs.map(stopsOfLeg));
+      return { j, backtrack: detectBacktrack(j.legs, stopsByLeg) };
+    }),
+  );
+  for (const { j, backtrack } of checked) {
+    if (backtrack) {
       removed++;
       continue;
     }
-    candidates.push(j);
+    kept.push(j);
   }
 
-  candidates = dedupeJourneys(candidates);
+  const candidates = dedupeJourneys(kept);
   const best = Math.min(...candidates.map((j) => journeyFlags(j).totalMinutes).filter((n) => n > 0), Number.POSITIVE_INFINITY);
 
   const scored: ScoredJourney[] = candidates.map((j) => {

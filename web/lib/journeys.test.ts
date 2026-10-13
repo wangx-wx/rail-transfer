@@ -74,3 +74,37 @@ test('上限截断：超过 M 条按加权排序保留前 M 条（T45）', () =>
   const many: Journey[] = Array.from({ length: 25 }, (_, i) => j2(`G${i}`, `H${i}`, 20 + i));
   expect(capJourneys(many, 10)).toHaveLength(10);
 });
+
+// ── 绕行惩罚 + 排序模式（D63 兑现）────────────────────────
+import { DETOUR_PENALTY_MINUTES } from '../../shared/constants.ts';
+
+test('加权分：疑似绕远（detour）多罚 DETOUR_PENALTY_MINUTES', () => {
+  const j = j2();
+  expect(weightedScore(j, true) - weightedScore(j, false)).toBe(DETOUR_PENALTY_MINUTES);
+});
+
+test('加权排序：把疑似绕远压到同耗时但不绕的方案之后', () => {
+  const fast = j2('F1', 'F2');
+  const slow = { ...j2('S1', 'S2'), detour: true } as Journey & { detour: boolean };
+  const scored = sortJourneys([slow, fast], { detourOf: (x) => (x as { detour?: boolean }).detour === true });
+  expect(scored[0]!.legs[0]!.trainNo).toBe('F1');
+});
+
+test('按总耗时排序：忽略换乘惩罚，纯按 totalMinutes', () => {
+  const two = j2(); // 180 分钟
+  const three: Journey = {
+    legs: [
+      t('G1', 'O', 'H', '08:00', '09:00', '01:00'),
+      t('G3', 'H', 'K', '09:10', '09:40', '00:30'),
+      t('G4', 'K', 'D', '10:00', '10:30', '00:30'),
+    ],
+    transfers: [
+      { station: 'H', waitMinutes: 10, sameStation: true },
+      { station: 'K', waitMinutes: 20, sameStation: true },
+    ],
+  }; // 150 分钟，更短但换乘多
+  const byTime = sortJourneys([two, three], { mode: 'time' });
+  expect(byTime[0]).toBe(three);
+  const byWeight = sortJourneys([two, three], { mode: 'weighted' });
+  expect(byWeight[0]).toBe(two);
+});

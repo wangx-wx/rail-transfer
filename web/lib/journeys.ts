@@ -10,6 +10,7 @@ import {
   MIN_WAIT_CROSS_STATION,
   LONG_WAIT_THRESHOLD,
   RISK_WAIT_THRESHOLD,
+  DETOUR_PENALTY_MINUTES,
 } from '../../shared/constants.ts';
 import { durationToMinutes } from './journey.ts';
 import type { Journey } from './journey.ts';
@@ -74,15 +75,36 @@ export function dedupeJourneys(js: Journey[]): Journey[] {
   return out;
 }
 
-/** 加权分（D63）：总耗时 + 换乘次数惩罚；分越小越优 */
-export function weightedScore(j: Journey): number {
+/**
+ * 加权分（D63）：**总耗时 + 换乘次数惩罚 + 绕行惩罚**；分越小越优。
+ *
+ * `detour` 为疑似绕远标记（只标记不删除，D61）——由调用方从 `ScoredJourney`
+ * 传入；`Journey` 本身不含此字段（标记在回头判定后才产生）。
+ */
+export function weightedScore(j: Journey, detour = false): number {
   const s = journeyFlags(j);
-  return s.totalMinutes + s.transfers * TRANSFER_PENALTY_MINUTES;
+  return s.totalMinutes + s.transfers * TRANSFER_PENALTY_MINUTES + (detour ? DETOUR_PENALTY_MINUTES : 0);
 }
 
-/** 按加权分升序排序（D63 默认） */
-export function sortJourneys(js: Journey[]): Journey[] {
-  return [...js].sort((a, b) => weightedScore(a) - weightedScore(b));
+/** 排序模式（D63）：加权 / 按总耗时 */
+export type SortMode = 'weighted' | 'time';
+
+/** 排序选项 */
+export interface SortOptions {
+  mode?: SortMode;
+  /** 取某行程的疑似绕远标记；缺省读 `j.detour`（ScoredJourney） */
+  detourOf?: (j: Journey) => boolean;
+}
+
+/** 按指定模式排序（D63 默认加权） */
+export function sortJourneys(js: Journey[], opts: SortOptions = {}): Journey[] {
+  const mode = opts.mode ?? 'weighted';
+  const detourOf = opts.detourOf ?? ((j: Journey) => (j as { detour?: boolean }).detour === true);
+  return [...js].sort((a, b) =>
+    mode === 'time'
+      ? journeyFlags(a).totalMinutes - journeyFlags(b).totalMinutes
+      : weightedScore(a, detourOf(a)) - weightedScore(b, detourOf(b)),
+  );
 }
 
 /** 上限截断（T45）：去重 → 按加权排序 → 取前 M 条 */

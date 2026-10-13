@@ -53,18 +53,57 @@ export function parseTrainRow(row: string): Train {
 }
 
 /**
+ * 解析 leftTicket 的一行，**跳过席别对象**（中转路径专用）。
+ *
+ * 自研中转（`journey.ts`）只用 trainNo / 站码 / 时刻 / 历时，从不读 `seats`；
+ * 一次查询要解析数万趟车，逐行构造 8 个席别对象纯属浪费。`seats` 返回空数组。
+ *
+ * ⚠️ 直达 / 展示 / 买短乘长路径**必须**用 `parseTrainRow`（它们读余票）。
+ */
+export function parseTrainRowLite(row: string): Train {
+  const f = row.split('|');
+  return {
+    trainNo: f[COL.trainNo] ?? '',
+    trainCode: f[COL.trainCode] ?? '',
+    fromStation: f[COL.fromStationCode] ?? '',
+    toStation: f[COL.toStationCode] ?? '',
+    startStation: f[COL.startStationCode] ?? '',
+    endStation: f[COL.endStationCode] ?? '',
+    startTime: f[COL.startTime] ?? '',
+    arriveTime: f[COL.arriveTime] ?? '',
+    duration: f[COL.duration] ?? '',
+    trainDate: f[COL.trainDate] ?? '',
+    fromStationNo: f[COL.fromStationNo] ?? '',
+    toStationNo: f[COL.toStationNo] ?? '',
+    secretStr: f[COL.secretStr] ?? '',
+    seats: [],
+    seatTypes: f[COL.seatTypes] ?? '',
+  };
+}
+
+/** 解析选项 */
+export interface ParseLeftTicketOptions {
+  /** 跳过席别对象构造（中转路径用）；缺省 false */
+  lite?: boolean;
+}
+
+/**
  * 解析余票接口响应。
  *
  * ⚠️ 空 data 是**正常结果**（无车次），不是错误（5.11）。
  */
-export function parseLeftTicket(raw: UpstreamEnvelope<LeftTicketData> | undefined): {
+export function parseLeftTicket(
+  raw: UpstreamEnvelope<LeftTicketData> | undefined,
+  opts: ParseLeftTicketOptions = {},
+): {
   trains: Train[];
   stationMap: Record<string, string>;
 } {
   const d = raw?.data;
   const result = Array.isArray(d?.result) ? d.result : [];
+  const parse = opts.lite ? parseTrainRowLite : parseTrainRow;
   return {
-    trains: result.map(parseTrainRow),
+    trains: result.map(parse),
     stationMap: d?.map ?? {},
   };
 }
