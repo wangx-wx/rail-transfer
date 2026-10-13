@@ -6,17 +6,21 @@
  * 运行：npm test
  */
 
-import { test, expect } from 'vitest';
+import { test, expect, beforeEach } from 'vitest';
 
 import {
   extractCookies,
   classify,
   initCookie,
+  resetCookieCache,
   fetchLeftTicket,
   fetchTransfer,
   fetchTransferBatch,
 } from './source.ts';
 import type { FetchLike } from './source.ts';
+
+// cookie 现在是模块级缓存（T8 修订），逐例清空避免串味
+beforeEach(() => resetCookieCache());
 
 /** 假 Response 的形态（只含 source.ts 用到的字段） */
 interface MockRes {
@@ -175,4 +179,44 @@ test('fetchTransferBatch：串行查多个枢纽，单项失败不影响其余',
   expect(out[1]!.error).toMatch(/error\.html/);
   expect(out[2]!.ok).toBe(true);
   expect(out.map((x) => x.key)).toEqual(['NKH', 'BAD', 'UUH']);
+});
+
+// ── cookie 复用（T8 修订，2026-10-13）────────────────────
+test('cookie 复用：第二次 fetchLeftTicket 不再打 init', async () => {
+  const f = mockFetch((url) =>
+    url.includes('/init')
+      ? fakeRes({ body: '{}', cookies: ['JSESSIONID=xyz; Path=/'] })
+      : fakeRes({ body: '{"data":{"result":[]}}' }),
+  );
+  await fetchLeftTicket({ from: 'VNP', to: 'AOH', date: '2026-10-07', fetchImpl: f });
+  const after1 = f.calls.length;
+  await fetchLeftTicket({ from: 'VNP', to: 'AOH', date: '2026-10-07', fetchImpl: f });
+  const initCalls = f.calls.filter((c) => c.url.includes('/init')).length;
+  expect(initCalls).toBe(1); // 只 init 一次
+  expect(f.calls.length - after1).toBe(1); // 第二次仅 1 次请求（queryG）
+});
+
+test('cookie 复用：queryG 返回非「被拦」错误（如 HTTP 500）不重试', async () => {
+  const f = mockFetch((url) => (url.includes('/init') ? fakeRes({ body: '{}', cookies: ['JSESSIONID=xyz; Path=/'] }) : fakeRes({ status: 500, body: '' })));
+  const out = await fetchLeftTicket({ from: 'VNP', to: 'AOH', date: '2026-10-07', fetchImpl: f });
+  expect(out.ok).toBe(false);
+  expect(f.calls.filter((c) => c.url.includes('/init')).length).toBe(1); // 未重取
+});
+
+test('cookie 失效：queryG 被拦 → 清缓存重取并重试一次', async () => {
+  let initN = 0;
+  const f = mockFetch((url) => {
+    if (url.includes('/init')) {
+      initN++;
+      return fakeRes({ body: '{}', cookies: [`JSESSIONID=v${initN}; Path=/`] });
+    }
+    // 旧 cookie 被拦，新 cookie 放行
+    const cookie = ((f.calls.at(-1)!.opts.headers as Record<string, string>)['Cookie'] ?? '');
+    return cookie.includes('v1')
+      ? fakeRes({ status: 302, location: 'https://kyfw.12306.cn/otn/error.html' })
+      : fakeRes({ body: '{"data":{"result":[]}}' });
+  });
+  const out = await fetchLeftTicket({ from: 'VNP', to: 'AOH', date: '2026-10-07', fetchImpl: f });
+  expect(initN).toBe(2); // 重取了一次 cookie
+  expect(out.ok).toBe(true);
 });

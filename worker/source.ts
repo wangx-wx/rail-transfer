@@ -98,23 +98,45 @@ async function request(
 }
 
 /**
- * 取余票接口所需的 cookie（T8：每次现取现用，不缓存）。
+ * 取余票接口所需的 cookie。
  *
  * 必须先访问 init，否则 `/otn/leftTicket/*` 会被 WAF 拦成 302（产品方案 5.3）。
  *
  * ⚠️ init 返回的是 HTML 页面（text/html），**不是 JSON**，不能用 `classify`
  * （它会判「非 JSON」为错误而丢弃 cookie）。见技术方案 §5.2。
  *
+ * **2026-10-13 修订 T8**：原「每次现取现用」导致**每个余票请求都先打一次 init**
+ * （init 返回整个 HTML 页，比 queryG 慢得多——本地 105ms vs 26ms，线上 1~2s）。
+ * 实测同一 cookie 连续 8 次可用，故改为**模块级缓存 5 分钟**（与缓存 TTL 一致）：
+ * 每个枚举请求从「2 次上游请求」降到「1 次」。
+ *
+ * ⚠️ 缓存跨 invocation：Workers 不保证模块级变量存活（isolate 可能回收），
+ * 存活时是纯收益、回收时退化为旧行为，不影响正确性。
+ * 单测需在每例前调用 `resetCookieCache()` 避免串味。
+ *
  * @returns `k=v; k=v` 形式的 Cookie 头；失败返回空串
  */
+const COOKIE_TTL_MS = 5 * 60 * 1000;
+let cookieCache: { value: string; expires: number } | null = null;
+
+/** 清空 cookie 缓存（cookie 失效时重取；单测隔离用） */
+export function resetCookieCache(): void {
+  cookieCache = null;
+}
+
 export async function initCookie(deps: SourceDeps = {}): Promise<string> {
+  const now = Date.now();
+  if (cookieCache && cookieCache.expires > now) return cookieCache.value;
+
   const { res } = await request('/otn/leftTicket/init', {}, deps);
   if ('error' in res) return '';
   if (res.status !== 200) return '';
   if ((res.headers.get('location') ?? '').includes('error.html')) return '';
-  return extractCookies(res)
+  const value = extractCookies(res)
     .map((s) => s.split(';')[0])
     .join('; ');
+  if (value) cookieCache = { value, expires: now + COOKIE_TTL_MS };
+  return value;
 }
 
 /** 查询余票（直达）的参数 */
@@ -129,6 +151,9 @@ export interface LeftTicketParams extends SourceDeps {
  * 查询余票（直达）。
  *
  * 城市粒度（D6）：传城市代表站码即可，**服务端自动展开全城**（产品方案 5.2）。
+ *
+ * cookie 复用（2026-10-13 修订 T8）：复用缓存 cookie，省掉每次的 init 往返。
+ * 若复用后被拦（302→error.html，cookie 可能已失效），**清缓存重取并重试一次**。
  */
 export async function fetchLeftTicket({
   from,
@@ -136,20 +161,31 @@ export async function fetchLeftTicket({
   date,
   fetchImpl = globalThis.fetch,
 }: LeftTicketParams): Promise<FetchResult<UpstreamEnvelope<unknown>>> {
+  const attempted = async (cookie: string): Promise<{ blocked: boolean; result: FetchResult<UpstreamEnvelope<unknown>> }> => {
+    const { res, text } = await request(
+      '/otn/leftTicket/queryG',
+      {
+        'leftTicketDTO.train_date': date,
+        'leftTicketDTO.from_station': from,
+        'leftTicketDTO.to_station': to,
+        purpose_codes: 'ADULT',
+      },
+      { cookie, fetchImpl },
+    );
+    const c = classify(res, text);
+    if (!c.ok) return { blocked: c.error?.includes('error.html') ?? false, result: { ok: false, error: c.error ?? '未知错误' } };
+    return { blocked: false, result: { ok: true, data: JSON.parse(text) } };
+  };
+
   const cookie = await initCookie({ fetchImpl });
-  const { res, text } = await request(
-    '/otn/leftTicket/queryG',
-    {
-      'leftTicketDTO.train_date': date,
-      'leftTicketDTO.from_station': from,
-      'leftTicketDTO.to_station': to,
-      purpose_codes: 'ADULT',
-    },
-    { cookie, fetchImpl },
-  );
-  const c = classify(res, text);
-  if (!c.ok) return { ok: false, error: c.error ?? '未知错误' };
-  return { ok: true, data: JSON.parse(text) };
+  const first = await attempted(cookie);
+  if (!first.blocked) return first.result;
+
+  // cookie 可能已失效：清缓存、重取，再试一次
+  resetCookieCache();
+  const fresh = await initCookie({ fetchImpl });
+  if (fresh === cookie) return first.result; // 没取到新 cookie，不空转
+  return (await attempted(fresh)).result;
 }
 
 /** 查询单个枢纽中转方案的参数 */
