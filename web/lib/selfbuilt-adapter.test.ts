@@ -79,3 +79,22 @@ test('stopsOf：经停查询失败 → 回退为起讫两站', async () => {
   const train = { trainNo: '1', fromStation: 'O', toStation: 'H', fromStationNo: '01', toStationNo: '03' } as never;
   expect(await deps.stopsOf(train)).toEqual(['O', 'H']);
 });
+
+test('stopsOf：按 station_no 裁到乘车段（接口返回列车全程时）', async () => {
+  // 实测场景：K7731 全程「冠县→秦皇岛」，乘车段是 no=10(北京丰台)→no=11(天津)
+  const deps = createSelfBuiltDeps(PARAMS, {
+    fetchImpl: fakeFetch({
+      '/api/stopover': stopBody([
+        { station_name: '冠县', station_no: '01' },
+        { station_name: '石家庄', station_no: '06' },
+        { station_name: '北京丰台', station_no: '10' },
+        { station_name: '天津', station_no: '11' },
+        { station_name: '唐山', station_no: '12' },
+        { station_name: '秦皇岛', station_no: '14' },
+      ]),
+    }),
+  });
+  const train = { trainNo: '1', fromStation: 'FTP', toStation: 'TJP', fromStationNo: '10', toStationNo: '11' } as never;
+  // 只保留乘车段内的站：北京丰台、天津（唐山/秦皇岛在乘车段之后，冠县/石家庄在前）
+  expect(await deps.stopsOf(train)).toEqual(['北京丰台', '天津']);
+});

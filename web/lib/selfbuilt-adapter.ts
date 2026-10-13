@@ -44,9 +44,23 @@ export function createSelfBuiltDeps(p: SelfBuiltParams, opts: AdapterOptions = {
         apiOpts,
       );
       if (!r.ok) return [train.fromStation, train.toStation];
-      const stops: RawStopoverStation[] = r.data.data?.data ?? [];
-      if (!stops.length) return [train.fromStation, train.toStation];
-      return stops.map((s) => s.station_name);
+      const all: RawStopoverStation[] = r.data.data?.data ?? [];
+      if (!all.length) return [train.fromStation, train.toStation];
+      // ⚠️ 经停接口返回的是**列车全程**（始发→终到），可能远宽于本次乘车段
+      // （实测 K7731 全程「冠县→秦皇岛」，而我们坐的是「北京丰台(10)→天津(11)」）。
+      // 必须按 station_no 裁到本次乘车段，否则回头看判定会把越界站（如天津之后的
+      // 唐山/秦皇岛）当作「已过站」，导致几乎全部方案被误删（实测 19/20）。
+      const from = Number(train.fromStationNo);
+      const to = Number(train.toStationNo);
+      const seg =
+        Number.isFinite(from) && Number.isFinite(to)
+          ? all.filter((s) => {
+              const no = Number(s.station_no);
+              return Number.isFinite(no) && no >= from && no <= to;
+            })
+          : all;
+      const use = seg.length >= 2 ? seg : all;
+      return use.map((s) => s.station_name);
     },
   };
 }
