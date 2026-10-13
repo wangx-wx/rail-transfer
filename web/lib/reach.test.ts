@@ -180,3 +180,13 @@ test('selectHubs：平局用 tier 破平，且 maxHubs 截断', () => {
   expect(kept).toHaveLength(1);
   expect(kept[0]).toBe('济南'); // 济南比值更小，优先
 });
+
+test('selectHubs：minHubs 保底——硬砍过头时按比值补回最接近的（短途 OD）', () => {
+  // 合成短途 OD：三个枢纽都明显偏离直线（比值 > 1.2），硬砍会砍光
+  const coords = { O: [0, 0], D: [1, 0], H1: [0.5, 1], H2: [0.5, 2], H3: [0.5, 3] } satisfies CityCoords;
+  const cut = selectHubs(coords, 'O', 'D', ['H1', 'H2', 'H3'], { maxRatio: 1.2 });
+  expect(cut).toHaveLength(0); // 全被砍
+  const kept = selectHubs(coords, 'O', 'D', ['H1', 'H2', 'H3'], { maxRatio: 1.2, minHubs: 2 });
+  expect(kept).toHaveLength(2); // 补回最接近的 2 个（H1、H2）
+  expect(kept).toEqual(['H1', 'H2']);
+});

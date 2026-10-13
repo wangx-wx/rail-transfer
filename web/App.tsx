@@ -15,7 +15,7 @@ import { runSelfBuiltQuery, estimateSelfBuiltRequests, selectHubCodes } from './
 import { createSelfBuiltDeps } from './lib/selfbuilt-adapter.ts';
 import { buildHubPool } from './lib/hubs.ts';
 import { parseReachability, type ReachGraph } from './lib/reach.ts';
-import { MAX_HUB_DETOUR_RATIO, MAX_HUBS } from '../shared/constants.ts';
+import { MAX_HUB_DETOUR_RATIO, MAX_HUBS, MIN_HUBS } from '../shared/constants.ts';
 import { REACHABILITY_EDGES } from './data/reachability.ts';
 import { CITY_COORDS } from './data/coords.ts';
 import { cityOfStation } from './lib/city.ts';
@@ -282,6 +282,7 @@ export default function App() {
         cityOf: cityOfStation,
         maxHubRatio: MAX_HUB_DETOUR_RATIO,
         maxHubs: MAX_HUBS,
+        minHubs: MIN_HUBS,
         maxDetourChecks: 20,
         beamPerStation: 24,
         beamSize: 480,

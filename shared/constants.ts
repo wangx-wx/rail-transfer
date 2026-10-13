@@ -54,6 +54,14 @@ export const MAX_HUB_DETOUR_RATIO = 1.6;
 /** 枢纽排序后最多保留几个（兜底，防大池溢出）；真正收缩主要靠 MAX_HUB_DETOUR_RATIO */
 export const MAX_HUBS = 12;
 
+/**
+ * 几何硬砍后的**保底枢纽数**：硬砍后不足此数时，按比值补回最接近的。
+ *
+ * ⚠️ 短途 OD（如 广州→长沙）的所有枢纽几何上都偏离直线，`MAX_HUB_DETOUR_RATIO`
+ * 会把它们砍光（实测剩 0 个），必须保底。长 OD 硬砍结果远多于 4，不受影响。
+ */
+export const MIN_HUBS = 4;
+
 /** 加权排序的绕行惩罚（分钟，D63）：疑似绕远方案在排序里加此惩罚 */
 export const DETOUR_PENALTY_MINUTES = 60;
 

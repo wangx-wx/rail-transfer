@@ -140,3 +140,11 @@ test('estimateSelfBuiltRequests：二次换乘 ≈ N²+2N + detour×2', () => {
   // 1²+2×1 + 10×2 = 23
   expect(est.requests).toBe(23);
 });
+
+test('selectHubCodes：minHubs 保底——短途 OD 不因几何硬砍归零', () => {
+  // 造一个所有枢纽都偏离直线的短途 OD
+  const coords = { O: [0, 0], D: [1, 0], H1: [0.5, 1], H2: [0.5, -1], H3: [0.5, 2] } satisfies Record<string, [number, number]>;
+  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const, hubs: ['H1', 'H2', 'H3'], coords, maxHubRatio: 1.2 };
+  expect(selectHubCodes(p)).toHaveLength(0); // 无保底 → 砍光
+  expect(selectHubCodes({ ...p, minHubs: 2 })).toHaveLength(2); // 有保底 → 补回 2 个
+});

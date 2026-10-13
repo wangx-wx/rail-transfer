@@ -201,12 +201,20 @@ export interface HubSelection {
   maxRatio?: number;
   /** 排序后最多保留几个（兜底，防大池溢出） */
   maxHubs?: number;
+  /**
+   * 硬砍后的**保底枢纽数**：若硬砍后不足 `minHubs`，按比值从被砍的里补回最接近的。
+   *
+   * ⚠️ 必需：短途 OD 的**所有**枢纽几何上都「不在直线上」，`maxRatio` 会把它们
+   * 砍光（实测 广州→长沙 硬砍 1.6 后只剩 0 个、广州→武汉 只剩 3 个）。有了保底，
+   * 长 OD 仍能收得很紧，短 OD 也不至于无枢纽可用。
+   */
+  minHubs?: number;
   /** 可达性分档（可达 = 0，否则 1）；**仅用于比值相同时破平** */
   tierOf?: (city: string) => number;
 }
 
 /**
- * 枢纽选留（T40 落实）：几何硬砍 → 按绕行比值升序 → 截断。
+ * 枢纽选留（T40 落实）：几何硬砍（带保底）→ 按绕行比值升序 → 截断。
  *
  * ⚠️ 排序以**比值为主、分档仅破平**：实测若让可达性分档主导，会把「低比值但
  * 可达图无记录」的枢纽（如北京→昆明的郑州/重庆/贵阳）挤出 Top-K——弯曲干线的
@@ -223,6 +231,17 @@ export function selectHubs(
   const scored = hubs.map((h) => ({ h, r: detourRatio(coords, from, to, h) }));
   const kept =
     opts.maxRatio == null ? scored : scored.filter((x) => x.r == null || x.r <= opts.maxRatio!);
+  // 保底：硬砍过头（短途 OD）时，按比值补回最接近的，避免无枢纽可用。
+  if (opts.minHubs != null && kept.length < opts.minHubs) {
+    const keptSet = new Set(kept);
+    const rest = scored
+      .filter((x) => !keptSet.has(x))
+      .sort((a, b) => (a.r ?? Number.POSITIVE_INFINITY) - (b.r ?? Number.POSITIVE_INFINITY));
+    for (const x of rest) {
+      if (kept.length >= opts.minHubs) break;
+      kept.push(x);
+    }
+  }
   const tier = opts.tierOf ?? (() => 0);
   kept.sort((a, b) => {
     const ra = a.r ?? Number.POSITIVE_INFINITY;

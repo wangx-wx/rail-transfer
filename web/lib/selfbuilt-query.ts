@@ -51,6 +51,8 @@ export interface SelfBuiltQueryParams {
   maxHubRatio?: number;
   /** 排序后枢纽上限（T40 兜底，防大池溢出）；缺省不截断 */
   maxHubs?: number;
+  /** 几何硬砍后的保底枢纽数（短途 OD 防止砍光）；缺省不保底 */
+  minHubs?: number;
   /** 扩展边硬上限（T41） */
   maxEdges?: number;
   /** 同一到达城市每层最多保留几条部分行程（支配剪枝，T49） */
@@ -109,6 +111,7 @@ export function selectHubCodes(p: SelfBuiltQueryParams): string[] {
     ? selectHubs(p.coords, fromCity, toCity, keptCities, {
         maxRatio: p.maxHubRatio,
         maxHubs: p.maxHubs,
+        minHubs: p.minHubs,
         tierOf,
       })
     : [...keptCities].sort((a, b) => tierOf(a) - tierOf(b));
