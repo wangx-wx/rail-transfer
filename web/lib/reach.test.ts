@@ -142,7 +142,7 @@ test('filterByDirection：无坐标的枢纽保留（不误杀）', () => {
 });
 
 // ── 几何绕行：排序 / 硬砍 / 截断（T40 落实）────────────────
-import { detourRatio, selectHubs } from './reach.ts';
+import { detourRatio, scoreHubs, selectHubs } from './reach.ts';
 
 const RC = { 北京: [116.38, 39.87], 上海: [121.32, 31.19], 济南: [116.99, 36.67], 南京: [118.80, 32.09], 武汉: [114.42, 30.61] } satisfies CityCoords;
 
@@ -189,4 +189,18 @@ test('selectHubs：minHubs 保底——硬砍过头时按比值补回最接近�
   const kept = selectHubs(coords, 'O', 'D', ['H1', 'H2', 'H3'], { maxRatio: 1.2, minHubs: 2 });
   expect(kept).toHaveLength(2); // 补回最接近的 2 个（H1、H2）
   expect(kept).toEqual(['H1', 'H2']);
+});
+
+test('scoreHubs：与 selectHubs().map 等价（守护断言，防漂移）', () => {
+  const hubs = ['武汉', '南京', '济南', '拉萨'];
+  const opts = { maxRatio: 1.5, maxHubs: 2, minHubs: 1 };
+  expect(scoreHubs(RC, '北京', '上海', hubs, opts).map((x) => x.hub)).toEqual(
+    selectHubs(RC, '北京', '上海', hubs, opts),
+  );
+});
+
+test('scoreHubs：带出绕行比值，缺坐标为 null', () => {
+  const scored = scoreHubs(RC, '北京', '上海', ['济南', '拉萨']);
+  expect(scored.find((x) => x.hub === '济南')!.ratio).toBeGreaterThan(1);
+  expect(scored.find((x) => x.hub === '拉萨')!.ratio).toBeNull();
 });

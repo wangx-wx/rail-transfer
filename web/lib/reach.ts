@@ -213,30 +213,38 @@ export interface HubSelection {
   tierOf?: (city: string) => number;
 }
 
+/** 带绕行比值的枢纽（`ratio` 为 null = 缺坐标，未判） */
+export interface ScoredHub {
+  hub: string;
+  ratio: number | null;
+}
+
 /**
- * 枢纽选留（T40 落实）：几何硬砍（带保底）→ 按绕行比值升序 → 截断。
+ * 枢纽打分与选留（T40 落实）：几何硬砍（带保底）→ 按绕行比值升序 → 截断。
+ *
+ * **保留比值**供 UI 展示（如候选卡片显示「天津 1.01」）。`selectHubs` 是它的取码版。
  *
  * ⚠️ 排序以**比值为主、分档仅破平**：实测若让可达性分档主导，会把「低比值但
  * 可达图无记录」的枢纽（如北京→昆明的郑州/重庆/贵阳）挤出 Top-K——弯曲干线的
  * 正确入口会被误杀。可达图是稀疏子集（T47），不能主导排序。
  * 缺比值的枢纽排在最后（宁可多查，只是不占前排）。
  */
-export function selectHubs(
+export function scoreHubs(
   coords: CityCoords,
   from: string,
   to: string,
   hubs: string[],
   opts: HubSelection = {},
-): string[] {
-  const scored = hubs.map((h) => ({ h, r: detourRatio(coords, from, to, h) }));
+): ScoredHub[] {
+  const scored: ScoredHub[] = hubs.map((h) => ({ hub: h, ratio: detourRatio(coords, from, to, h) }));
   const kept =
-    opts.maxRatio == null ? scored : scored.filter((x) => x.r == null || x.r <= opts.maxRatio!);
+    opts.maxRatio == null ? scored : scored.filter((x) => x.ratio == null || x.ratio <= opts.maxRatio!);
   // 保底：硬砍过头（短途 OD）时，按比值补回最接近的，避免无枢纽可用。
   if (opts.minHubs != null && kept.length < opts.minHubs) {
     const keptSet = new Set(kept);
     const rest = scored
       .filter((x) => !keptSet.has(x))
-      .sort((a, b) => (a.r ?? Number.POSITIVE_INFINITY) - (b.r ?? Number.POSITIVE_INFINITY));
+      .sort((a, b) => (a.ratio ?? Number.POSITIVE_INFINITY) - (b.ratio ?? Number.POSITIVE_INFINITY));
     for (const x of rest) {
       if (kept.length >= opts.minHubs) break;
       kept.push(x);
@@ -244,10 +252,20 @@ export function selectHubs(
   }
   const tier = opts.tierOf ?? (() => 0);
   kept.sort((a, b) => {
-    const ra = a.r ?? Number.POSITIVE_INFINITY;
-    const rb = b.r ?? Number.POSITIVE_INFINITY;
-    return ra - rb || tier(a.h) - tier(b.h);
+    const ra = a.ratio ?? Number.POSITIVE_INFINITY;
+    const rb = b.ratio ?? Number.POSITIVE_INFINITY;
+    return ra - rb || tier(a.hub) - tier(b.hub);
   });
-  const out = kept.map((x) => x.h);
-  return opts.maxHubs != null ? out.slice(0, opts.maxHubs) : out;
+  return opts.maxHubs != null ? kept.slice(0, opts.maxHubs) : kept;
+}
+
+/** 枢纽选留，只取站码（`scoreHubs` 的取码版） */
+export function selectHubs(
+  coords: CityCoords,
+  from: string,
+  to: string,
+  hubs: string[],
+  opts: HubSelection = {},
+): string[] {
+  return scoreHubs(coords, from, to, hubs, opts).map((x) => x.hub);
 }

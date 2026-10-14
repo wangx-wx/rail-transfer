@@ -12,8 +12,8 @@
 
 import { createGateway } from './gateway.ts';
 import type { Gateway } from './gateway.ts';
-import { canReach, filterByDirection, selectHubs } from './reach.ts';
-import type { CityCoords } from './reach.ts';
+import { canReach, detourRatio, filterByDirection, scoreHubs } from './reach.ts';
+import type { CityCoords, ScoredHub } from './reach.ts';
 import type { ReachGraph } from './reach.ts';
 import { runSelfBuiltTransfer } from './selfbuilt.ts';
 import type { ScoredJourney } from './selfbuilt.ts';
@@ -53,6 +53,14 @@ export interface SelfBuiltQueryParams {
   maxHubs?: number;
   /** 几何硬砍后的保底枢纽数（短途 OD 防止砍光）；缺省不保底 */
   minHubs?: number;
+  /**
+   * 枢纽已由用户显式选定（D68 交互式选择）：**跳过方向过滤/硬砍/排序/截断**，
+   * 原序返回 `hubs`。
+   *
+   * ⚠️ 必需：否则用户明确点选的枢纽会被 `maxHubRatio`/`maxHubs` **静默剔除**
+   * （尤其从 `minHubs` 保底补进的、比值 > 1.6 的枢纽），表现为「点了却没结果」。
+   */
+  hubsLocked?: boolean;
   /** 扩展边硬上限（T41） */
   maxEdges?: number;
   /** 同一到达城市每层最多保留几条部分行程（支配剪枝，T49） */
@@ -86,16 +94,38 @@ function withGateway(deps: SelfBuiltQueryDeps, gateway: Gateway): SelfBuiltQuery
   };
 }
 
+/** 候选枢纽（供 UI 选择展示）：站码 + 城市名 + 绕行比值 */
+export interface HubCandidate {
+  /** 站码（点选与查询用） */
+  code: string;
+  /** 城市名（展示用；`ratio` 的计算域也是城市名） */
+  city: string;
+  /** 绕行比值；`null` = 缺坐标（UI 显示「—」） */
+  ratio: number | null;
+}
+
 /**
- * 枢纽选留（T39 可达图分档 + T40 方向过滤 + 几何硬砍 + 截断），返回站码。
+ * 枢纽候选（T39 可达图分档 + T40 方向过滤 + 几何硬砍 + 截断），带比值返回。
  *
- * 纯函数、零网络——供 `runSelfBuiltQuery` 与请求量预估共用，保证两处口径一致。
+ * 纯函数、零网络——供 `runSelfBuiltQuery`、请求量预估与 **UI 候选展示** 共用，
+ * 保证三处口径一致。`selectHubCodes` 是它的取码版。
  * ⚠️ 可达图节点是**城市名**，hubs 是**站码**，故先翻城市名再过滤，最后翻回站码。
+ * ⚠️ `hubsLocked`（D68）时**跳过一切过滤/排序/截断**，原序返回用户所选枢纽。
  */
-export function selectHubCodes(p: SelfBuiltQueryParams): string[] {
+export function selectHubCandidates(p: SelfBuiltQueryParams): HubCandidate[] {
   const cityOf = p.cityOf ?? ((c: string) => c);
   const fromCity = cityOf(p.from);
   const toCity = cityOf(p.to);
+
+  // 用户已显式选定（D68）：原序返回，绝不剔除——否则用户点的枢纽会被静默过滤掉
+  if (p.hubsLocked) {
+    return p.hubs.map((code) => ({
+      code,
+      city: cityOf(code),
+      ratio: p.coords ? detourRatio(p.coords, fromCity, toCity, cityOf(code)) : null,
+    }));
+  }
+
   const cityHubs = [...new Set(p.hubs.map(cityOf))];
   // 方向过滤（T40）：作用于城市名，与后续选留取交集
   let keptCities = cityHubs;
@@ -107,24 +137,30 @@ export function selectHubCodes(p: SelfBuiltQueryParams): string[] {
   const tierOf = (city: string): number =>
     p.graph && canReach(p.graph, fromCity, city) && canReach(p.graph, city, toCity) ? 0 : 1;
   // 有坐标 → 几何硬砍 + 比值排序（分档破平）；无坐标 → 仅按可达性分档排（稳定，保原序）
-  const selectedCities = p.coords
-    ? selectHubs(p.coords, fromCity, toCity, keptCities, {
+  const scored: ScoredHub[] = p.coords
+    ? scoreHubs(p.coords, fromCity, toCity, keptCities, {
         maxRatio: p.maxHubRatio,
         maxHubs: p.maxHubs,
         minHubs: p.minHubs,
         tierOf,
       })
-    : [...keptCities].sort((a, b) => tierOf(a) - tierOf(b));
+    : [...keptCities].sort((a, b) => tierOf(a) - tierOf(b)).map((hub) => ({ hub, ratio: null }));
+
   // 按选留顺序重排站码（同城只留一个代表，保持稳定序）
   const seen = new Set<string>();
-  const hubs: string[] = [];
-  for (const city of selectedCities) {
+  const out: HubCandidate[] = [];
+  for (const { hub: city, ratio } of scored) {
     const code = p.hubs.find((h) => cityOf(h) === city);
     if (!code || seen.has(code)) continue;
     seen.add(code);
-    hubs.push(code);
+    out.push({ code, city, ratio });
   }
-  return hubs;
+  return out;
+}
+
+/** 枢纽选留，只取站码（`selectHubCandidates` 的取码版） */
+export function selectHubCodes(p: SelfBuiltQueryParams): string[] {
+  return selectHubCandidates(p).map((c) => c.code);
 }
 
 /** 执行一次自研查询 */
@@ -173,9 +209,11 @@ export interface RequestEstimate {
  *
  * `N` = 预筛后枢纽数，`T` = 换乘次数，`K_detour` = 经停补查候选上限：
  * - 枚举边：一次换乘 `≈ 2N`；二次换乘 `≈ N² + 2N`。
- * - 经停补查：`K_detour × 2`（每程 1 次，实测 2 段居多）。
+ * - 经停补查：**按候选行程数上界 `2N` 封顶**（一次换乘产出 ≤ 2N 条候选），
+ *   再乘每程 1 次。`stopsMemo` 按 trainNo 去重，实际更少。
  *
- * ⚠️ 旧 T50 只估算 `2N`，**漏掉了经停补查**（实测的大头）——此处补上。
+ * ⚠️ 旧 T50 只估算 `2N`，**漏掉了经停补查**（实测的大头）；后又误用固定 `K_detour×2`。
+ * D68 交互式选择后 N 只有 1~2，故经停补查须随 N 缩放，否则预估虚高。
  * ⚠️ 不含查价 / 买短乘长（另走 `api.price`，不经本编排）。
  *
  * 耗时按 `请求数 ÷ (1/间隔)` 折算（T41：相邻请求间隔 `intervalMs`）。
@@ -187,7 +225,8 @@ export function estimateSelfBuiltRequests(
   const n = selectHubCodes(p).length;
   const t = p.maxTransfers;
   const edges = t === 1 ? 2 * n : n * n + 2 * n;
-  const detour = (opts.detourChecks ?? 20) * 2;
+  // 经停补查候选上界 = 2N（一次换乘条数上界），与配置上限取小
+  const detour = Math.min(opts.detourChecks ?? 20, 2 * n) * 2;
   const requests = edges + detour;
   return { hubs: n, requests, seconds: Math.ceil((requests * opts.intervalMs) / 1000), maxTransfers: t };
 }
