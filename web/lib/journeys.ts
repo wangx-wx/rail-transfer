@@ -107,7 +107,24 @@ export function sortJourneys(js: Journey[], opts: SortOptions = {}): Journey[] {
   );
 }
 
-/** 上限截断（T45）：去重 → 按加权排序 → 取前 M 条 */
+/**
+ * 上限截断（T45 修订，2026-10-14）：去重 → **按换乘次数分组各自取前 M 条**。
+ *
+ * ⚠️ 原实现「全局加权排序取前 M 条」有缺陷：一次换乘恒优于二次（更短 + 换乘惩罚），
+ * 全局排序会把名额全给一次换乘，**二次换乘一条都进不来**（实测选 2 个枢纽时，
+ * 前 200 条全是一次换乘，而算法其实产出了 2496 条二次换乘）。分组截断后每组都有内容，
+ * 与「按换乘次数分组展示」（D63）一致。
+ */
 export function capJourneys(js: Journey[], max = 200): Journey[] {
-  return sortJourneys(dedupeJourneys(js)).slice(0, max);
+  const uniq = dedupeJourneys(js);
+  const byTransfers = new Map<number, Journey[]>();
+  for (const j of uniq) {
+    const k = j.transfers.length;
+    const list = byTransfers.get(k);
+    if (list) list.push(j);
+    else byTransfers.set(k, [j]);
+  }
+  const out: Journey[] = [];
+  for (const list of byTransfers.values()) out.push(...sortJourneys(list).slice(0, max));
+  return out;
 }

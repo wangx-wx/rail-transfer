@@ -292,7 +292,9 @@ export default function App() {
       maxHubs: MAX_HUBS,
       minHubs: MIN_HUBS,
       maxDetourChecks: 20,
-      beamPerStation: 24,
+      // 支配剪枝（T49）：同一到达城市留最早 N 条。实测 24 太紧——中间层「同城多站」
+      // 分组过碎，二次换乘的桥接候选被剪光（二次产出恒为 0）；300 起才留得住。
+      beamPerStation: 300,
       beamSize: 480,
     };
     stageRef.current = params;
@@ -326,9 +328,11 @@ export default function App() {
     try {
       const rateLimit = { concurrency: 3, intervalMs: 300 } as const;
       const maxTransfers = selected.length === 2 ? 2 : 1;
-      // 枢纽锁定（D68）：跳过过滤，原序查询用户所选；边预算留余量（d²+2d 恰好打满偏脆）
       const d = selected.length;
-      const maxEdges = d === 1 ? 2 : d * d + 2 * d + 2;
+      // 边预算（D68 实测修正）：每条边是「某枢纽内**具体到达站** → 目标」，一个枢纽
+      // 有几十趟车、几十个不同到站，故**不能按枢纽数 `d²+2d` 估**——实测选 2 个枢纽
+      // 需约 30 条边（每枢纽 ~15 条），`d²+2d=10` 会让二次扩展永远轮不到（二次换乘产出 0）。
+      const maxEdges = Math.max(d * d + 2 * d, d * 20);
       const runParams: SelfBuiltQueryParams = {
         ...params,
         hubs: selected,

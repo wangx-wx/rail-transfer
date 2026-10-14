@@ -11,7 +11,7 @@
 
 import { planJourneys } from './journey.ts';
 import { detectBacktrack } from './detour.ts';
-import { capJourneys, dedupeJourneys, journeyFlags, sortJourneys } from './journeys.ts';
+import { capJourneys, dedupeJourneys, journeyFlags } from './journeys.ts';
 import { isDetour } from './detour.ts';
 import type { Journey, JourneyApi, JourneyParams } from './journey.ts';
 import type { Train } from '../../shared/types.ts';
@@ -100,8 +100,9 @@ export async function runSelfBuiltTransfer(
   const raw = await planJourneys(params, api);
 
   // 回头判定：只对候选行程补查经停（T43），明确折返删除（D61）。
-  // 候选可能上百条，故**先去重 + 加权排序取前 K 条**再补经停，避免上百次串行请求。
-  const ranked = sortJourneys(dedupeJourneys(raw)).slice(0, p.maxDetourChecks ?? 20);
+  // ⚠️ 必须**按换乘次数分组取前 K 条**（2026-10-14 修正）：全局排序取前 K 会让名额全被
+  // 一次换乘占据，二次换乘**在回头判定这步就被丢掉**（实测选 2 个枢纽时二次产出恒为 0）。
+  const ranked = capJourneys(raw, p.maxDetourChecks ?? 20) as Journey[];
 
   // 经停 memo：同一趟车会出现在多条候选行程里（D 个枢纽 × K 条候选），
   // 按 trainNo 去重可省掉大量重复 `/api/stopover`（F1/F2）。
