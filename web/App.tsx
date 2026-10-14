@@ -291,7 +291,6 @@ export default function App() {
       maxHubRatio: MAX_HUB_DETOUR_RATIO,
       maxHubs: MAX_HUBS,
       minHubs: MIN_HUBS,
-      maxDetourChecks: 20,
       // 支配剪枝（T49）：同一到达城市留最早 N 条。实测 24 太紧——中间层「同城多站」
       // 分组过碎，二次换乘的桥接候选被剪光（二次产出恒为 0）；300 起才留得住。
       beamPerStation: 300,
@@ -367,7 +366,7 @@ export default function App() {
       const r = await runSelfBuiltQuery({ ...runParams, maxEdges, rateLimit }, buildDeps);
       setJourneys(r.journeys);
       setStatus({
-        text: `自研中转 ${r.journeys.length} 条方案（经 ${r.hubs.length} 个枢纽，扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
+        text: `自研中转 ${r.journeys.length} 条方案（经 ${r.hubs.length} 个枢纽，扩展 ${r.edges} 条边）`,
         kind: 'info',
       });
     } catch (e) {

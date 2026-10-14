@@ -22,11 +22,6 @@ function leftBody(rows: string[]): string {
   return JSON.stringify({ ok: true, data: { data: { result: rows, map: {} } } });
 }
 
-/** 造一次 /api/stopover 响应（Worker 包一层 {ok,data} 外壳） */
-function stopBody(rows: Array<{ station_name: string; station_no: string }>): string {
-  return JSON.stringify({ ok: true, data: { data: { data: rows } } });
-}
-
 function fakeFetch(routes: Record<string, string>): typeof globalThis.fetch {
   return (async (url: string | URL) => {
     const u = new URL(String(url));
@@ -58,43 +53,14 @@ test('directTrains：非 OK 响应 → 空数组（不抛错）', async () => {
   expect(await deps.directTrains('O', 'H')).toEqual([]);
 });
 
-test('stopsOf：解析经停站名为序列', async () => {
-  const deps = createSelfBuiltDeps(PARAMS, {
-    fetchImpl: fakeFetch({
-      '/api/stopover': stopBody([
-        { station_name: 'O', station_no: '01' },
-        { station_name: 'X', station_no: '02' },
-        { station_name: 'H', station_no: '03' },
-      ]),
-    }),
-  });
-  const train = { trainNo: '1', fromStation: 'O', toStation: 'H', fromStationNo: '01', toStationNo: '03' } as never;
-  expect(await deps.stopsOf(train)).toEqual(['O', 'X', 'H']);
-});
-
-test('stopsOf：经停查询失败 → 回退为起讫两站', async () => {
-  const deps = createSelfBuiltDeps(PARAMS, {
-    fetchImpl: fakeFetch({ '/api/stopover': JSON.stringify({ ok: false, error: 'x' }) }),
-  });
-  const train = { trainNo: '1', fromStation: 'O', toStation: 'H', fromStationNo: '01', toStationNo: '03' } as never;
-  expect(await deps.stopsOf(train)).toEqual(['O', 'H']);
-});
-
-test('stopsOf：按 station_no 裁到乘车段（接口返回列车全程时）', async () => {
-  // 实测场景：K7731 全程「冠县→秦皇岛」，乘车段是 no=10(北京丰台)→no=11(天津)
-  const deps = createSelfBuiltDeps(PARAMS, {
-    fetchImpl: fakeFetch({
-      '/api/stopover': stopBody([
-        { station_name: '冠县', station_no: '01' },
-        { station_name: '石家庄', station_no: '06' },
-        { station_name: '北京丰台', station_no: '10' },
-        { station_name: '天津', station_no: '11' },
-        { station_name: '唐山', station_no: '12' },
-        { station_name: '秦皇岛', station_no: '14' },
-      ]),
-    }),
-  });
-  const train = { trainNo: '1', fromStation: 'FTP', toStation: 'TJP', fromStationNo: '10', toStationNo: '11' } as never;
-  // 只保留乘车段内的站：北京丰台、天津（唐山/秦皇岛在乘车段之后，冠县/石家庄在前）
-  expect(await deps.stopsOf(train)).toEqual(['北京丰台', '天津']);
+test('适配层只有 directTrains（T56：stopsOf 已移除，只打一个接口）', async () => {
+  const paths: string[] = [];
+  const fetchImpl = (async (url: string | URL) => {
+    paths.push(new URL(String(url)).pathname);
+    return new Response(leftBody([row({ trainNo: '1', code: 'G1', from: 'O', to: 'H', start: '08:00', arrive: '09:00', dur: '01:00' })]), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+  const deps = createSelfBuiltDeps(PARAMS, { fetchImpl });
+  await deps.directTrains('O', 'H');
+  expect(Object.keys(deps)).toEqual(['directTrains']);
+  expect(paths).toEqual(['/api/left-ticket']); // 无 stopover 请求
 });

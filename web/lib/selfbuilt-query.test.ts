@@ -25,9 +25,6 @@ function deps(routes: Record<string, Train[]>, calls: string[]): SelfBuiltQueryD
       calls.push(`${from}>${to}`);
       return routes[`${from}>${to}`] ?? [];
     },
-    async stopsOf(train) {
-      return [train.fromStation, train.toStation];
-    },
   };
 }
 
@@ -60,9 +57,8 @@ test('编排：枢纽全被方向过滤剔除 → 空结果，不发请求', asy
   expect(calls).toHaveLength(0);
 });
 
-test('编排：经停查询只对最终候选行程做（T43）', async () => {
+test('编排：只发枚举请求，无经停补查（T56）', async () => {
   const calls: string[] = [];
-  let stopQueries = 0;
   const d: SelfBuiltQueryDeps = {
     async directTrains(from, to) {
       calls.push(`${from}>${to}`);
@@ -72,10 +68,9 @@ test('编排：经停查询只对最终候选行程做（T43）', async () => {
       };
       return routes[`${from}>${to}`] ?? [];
     },
-    async stopsOf(train) { stopQueries++; return [train.fromStation, train.toStation]; },
   };
   await runSelfBuiltQuery({ from: 'O', to: 'D', date: '2026-10-08', maxTransfers: 1, hubs: ['H'], graph: { O: ['H'], H: ['D'] } }, d);
-  expect(stopQueries).toBe(2); // 仅一条候选行程的两程
+  expect(calls).toEqual(['O>H', 'H>D']); // 仅两条枚举边
 });
 
 // ── 城市名/站码转换 + 方向过滤（T39/T40）───────────────────
@@ -125,20 +120,21 @@ test('selectHubCodes：几何硬砍剔除绕行枢纽（缺坐标不砍）', () 
   expect(selectHubCodes(p)).toEqual(['NEAR']);
 });
 
-test('estimateSelfBuiltRequests：一次换乘 ≈ 2N + detour（按 2N 封顶）', () => {
+test('estimateSelfBuiltRequests：一次换乘 = 2N（T56 起不含经停补查）', () => {
   const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const, hubs: ['NEAR'], coords: COORDS };
-  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 20 });
-  // 1 枢纽：枚举 2×1=2；经停补查 min(20, 2×1)×2 = 4 → 合计 6；6×300ms = 1.8s → 2
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300 });
+  // 1 枢纽：枚举 2×1=2；2×300ms = 0.6s → 1
   expect(est.hubs).toBe(1);
-  expect(est.requests).toBe(6);
-  expect(est.seconds).toBe(2);
+  expect(est.requests).toBe(2);
+  expect(est.seconds).toBe(1);
 });
 
-test('estimateSelfBuiltRequests：二次换乘 ≈ N²+2N + detour（按 2N 封顶）', () => {
-  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 2 as const, hubs: ['NEAR'], coords: COORDS };
-  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 10 });
-  // 1²+2×1=3；经停补查 min(10, 2)×2 = 4 → 合计 7
-  expect(est.requests).toBe(7);
+test('estimateSelfBuiltRequests：二次换乘 = N²+2N（T56 起不含经停补查）', () => {
+  const coords = { O: [0, 0], D: [10, 0], NEAR: [5, 0], NEAR2: [5, 1] } satisfies Record<string, [number, number]>;
+  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 2 as const, hubs: ['NEAR', 'NEAR2'], coords };
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300 });
+  // 2²+2×2 = 8
+  expect(est.requests).toBe(8);
 });
 
 test('selectHubCodes：minHubs 保底——短途 OD 不因几何硬砍归零', () => {

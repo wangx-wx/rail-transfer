@@ -3,8 +3,8 @@
  *
  * 流程：
  *   1. 枢纽预筛（T39）：用离线可达图剔除明显不可达的枢纽
- *   2. 限流取数（T41）：所有 `directTrains` / `stopsOf` 走同一请求网关
- *   3. 分层扩展 + 绕行过滤（selfbuilt.ts，T37/T43）
+ *   2. 限流取数（T41）：所有 `directTrains` 走同一请求网关
+ *   3. 分层扩展 + 绕行过滤（selfbuilt.ts，T37）
  *
  * 纯编排，不触碰网络与 UI：取数经注入的 `SelfBuiltQueryDeps`（真实实现见
  * selfbuilt-adapter.ts）。Worker 零改动（T42）。
@@ -22,7 +22,6 @@ import type { Train } from '../../shared/types.ts';
 /** 编排依赖：真实实现包一层 api.ts（见 selfbuilt-adapter.ts 的扩展） */
 export interface SelfBuiltQueryDeps {
   directTrains(from: string, to: string): Promise<Train[]>;
-  stopsOf(train: Train): Promise<string[]>;
 }
 
 /** 限流配置（T41） */
@@ -69,8 +68,6 @@ export interface SelfBuiltQueryParams {
   beamSize?: number;
   /** 输出上限（T45） */
   maxResults?: number;
-  /** 经停补查候选上限（T43 请求量收敛） */
-  maxDetourChecks?: number;
   /** 限流；缺省不限流（测试用） */
   rateLimit?: SelfBuiltRateLimit;
 }
@@ -78,8 +75,6 @@ export interface SelfBuiltQueryParams {
 /** 查询结果 */
 export interface SelfBuiltQueryResult {
   journeys: ScoredJourney[];
-  /** 因回头被删除的候选数 */
-  removed: number;
   /** 实际扩展的边数 */
   edges: number;
   /** 预筛后的枢纽 */
@@ -90,7 +85,6 @@ export interface SelfBuiltQueryResult {
 function withGateway(deps: SelfBuiltQueryDeps, gateway: Gateway): SelfBuiltQueryDeps {
   return {
     directTrains: (from, to) => gateway.run(() => deps.directTrains(from, to)),
-    stopsOf: (train) => gateway.run(() => deps.stopsOf(train)),
   };
 }
 
@@ -182,7 +176,6 @@ export async function runSelfBuiltQuery(
       ...(p.cityOf ? { cityOf: p.cityOf } : {}),
       ...(p.maxEdges != null ? { maxEdges: p.maxEdges } : {}),
       ...(p.maxResults != null ? { maxResults: p.maxResults } : {}),
-      ...(p.maxDetourChecks != null ? { maxDetourChecks: p.maxDetourChecks } : {}),
       ...(p.beamPerStation != null ? { beamPerStation: p.beamPerStation } : {}),
       ...(p.beamSize != null ? { beamSize: p.beamSize } : {}),
     },
@@ -196,7 +189,7 @@ export async function runSelfBuiltQuery(
 export interface RequestEstimate {
   /** 预筛后的枢纽数 */
   hubs: number;
-  /** 预估上游请求数（枚举边 + 经停补查） */
+  /** 预估上游请求数（枚举边） */
   requests: number;
   /** 按限流参数折算的预计秒数 */
   seconds: number;
@@ -207,26 +200,22 @@ export interface RequestEstimate {
 /**
  * 预估一次自研查询的请求量与耗时（T50，纯前端、零网络）。
  *
- * `N` = 预筛后枢纽数，`T` = 换乘次数，`K_detour` = 经停补查候选上限：
- * - 枚举边：一次换乘 `≈ 2N`；二次换乘 `≈ N² + 2N`。
- * - 经停补查：**按候选行程数上界 `2N` 封顶**（一次换乘产出 ≤ 2N 条候选），
- *   再乘每程 1 次。`stopsMemo` 按 trainNo 去重，实际更少。
+ * `N` = 预筛后枢纽数，`T` = 换乘次数。枚举边按**城市对**去重后计：
+ * - 一次换乘 `≈ 2N`（出发→枢纽、枢纽→终点）；二次换乘 `≈ N² + 2N`。
+ * - 同城多站只算一次（T55 归一），故实际可能少于上界。
  *
- * ⚠️ 旧 T50 只估算 `2N`，**漏掉了经停补查**（实测的大头）；后又误用固定 `K_detour×2`。
- * D68 交互式选择后 N 只有 1~2，故经停补查须随 N 缩放，否则预估虚高。
+ * ⚠️ **2026-10-15（T56）**：经停补查已删除，预估不再含该项——此前它按 `2N` 封顶，
+ * 是大头（D68 下 N=2 时枚举 6 次 vs 经停补查最多 4 次）。
  * ⚠️ 不含查价 / 买短乘长（另走 `api.price`，不经本编排）。
  *
- * 耗时按 `请求数 ÷ (1/间隔)` 折算（T41：相邻请求间隔 `intervalMs`）。
+ * 耗时按 `请求数 × 间隔` 折算（T41：相邻请求间隔 `intervalMs`）。
  */
 export function estimateSelfBuiltRequests(
   p: SelfBuiltQueryParams,
-  opts: { intervalMs: number; detourChecks?: number },
+  opts: { intervalMs: number },
 ): RequestEstimate {
   const n = selectHubCodes(p).length;
   const t = p.maxTransfers;
-  const edges = t === 1 ? 2 * n : n * n + 2 * n;
-  // 经停补查候选上界 = 2N（一次换乘条数上界），与配置上限取小
-  const detour = Math.min(opts.detourChecks ?? 20, 2 * n) * 2;
-  const requests = edges + detour;
+  const requests = t === 1 ? 2 * n : n * n + 2 * n;
   return { hubs: n, requests, seconds: Math.ceil((requests * opts.intervalMs) / 1000), maxTransfers: t };
 }
