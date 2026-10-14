@@ -6,12 +6,13 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Modal } from 'antd';
+import { Button, Modal } from 'antd';
 
 import { API_BASE } from './config.ts';
 import * as api from './lib/api.ts';
 import { runQuery } from './lib/orchestrate.ts';
-import { runSelfBuiltQuery, estimateSelfBuiltRequests, selectHubCodes } from './lib/selfbuilt-query.ts';
+import { runSelfBuiltQuery, estimateSelfBuiltRequests, selectHubCodes, selectHubCandidates } from './lib/selfbuilt-query.ts';
+import type { HubCandidate, SelfBuiltQueryParams } from './lib/selfbuilt-query.ts';
 import { createSelfBuiltDeps } from './lib/selfbuilt-adapter.ts';
 import { buildHubPool } from './lib/hubs.ts';
 import { parseReachability, type ReachGraph } from './lib/reach.ts';
@@ -20,6 +21,7 @@ import { REACHABILITY_EDGES } from './data/reachability.ts';
 import { CITY_COORDS } from './data/coords.ts';
 import { cityOfStation } from './lib/city.ts';
 import SelfBuiltList from './components/SelfBuiltList.tsx';
+import HubPicker from './components/HubPicker.tsx';
 import type { ScoredJourney } from './lib/selfbuilt.ts';
 import { findShortTicket } from './lib/buyshort.ts';
 import type { BuyShortResult } from './lib/buyshort.ts';
@@ -35,8 +37,8 @@ import TransferList from './components/TransferList.tsx';
 import type { PlanGroup, Train, TransferPlan } from '../shared/types.ts';
 import { STATION_NAMES } from './data/stations.ts';
 
-/** 当前展示的结果类型 */
-type View = 'idle' | 'direct' | 'transfer' | 'selfbuilt';
+/** 当前展示的结果类型（`hubs` = D68 中转换乘枢纽选择中间态） */
+type View = 'idle' | 'direct' | 'transfer' | 'selfbuilt' | 'hubs';
 
 /** 直达结果 */
 interface DirectResult {
@@ -54,6 +56,11 @@ export default function App() {
   const [groups, setGroups] = useState<PlanGroup[]>([]);
   // 自研中转结果（T46：与 lcquery 通路并存）
   const [journeys, setJourneys] = useState<ScoredJourney[]>([]);
+  // D68 枢纽选择：候选（离线算出）+ 已选站码
+  const [candidates, setCandidates] = useState<HubCandidate[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  // 阶段一（选枢纽）暂存的查询参数，供阶段二（查询）复用；不进 state，避免多余渲染
+  const stageRef = useRef<SelfBuiltQueryParams | null>(null);
   // 离线可达图（T39 产物，内存构建一次）
   const reachRef = useRef<ReachGraph | null>(null);
 
@@ -160,6 +167,9 @@ export default function App() {
     setPrices({});
     setBuyShort({});
     setBuyShortProgress({});
+    // 丢弃 D68 阶段的候选，避免切回时看到陈旧选择
+    setCandidates([]);
+    setSelected([]);
     setStatus({ text: '正在查询直达…', kind: 'info' });
 
     try {
@@ -194,6 +204,9 @@ export default function App() {
     plansRef.current = [];
     setGroups([]);
     setPrices({});
+    // 丢弃 D68 阶段的候选，避免切回时看到陈旧选择
+    setCandidates([]);
+    setSelected([]);
     setStatus({ text: '正在查询官方基线…', kind: 'info' });
 
     /** 把累积的方案重新分组排序后写进 state（传新数组引用） */
@@ -256,40 +269,75 @@ export default function App() {
     }
   }
 
-  /** 查自研中转（T37~T46，与 lcquery 通路并存） */
-  async function onSelfBuilt(ctx: QueryContext): Promise<void> {
-    if (runningRef.current) return;
-    runningRef.current = true;
+  /**
+   * 阶段一（D68）：算候选中转枢纽，**零请求**、瞬时。
+   *
+   * 只做纯离线计算（可达图 + 坐标），切到 `'hubs'` 让用户挑 1~2 个；
+   * 参数暂存 `stageRef` 供阶段二复用。
+   */
+  function onSelfBuilt(ctx: QueryContext): void {
     ctxRef.current = ctx;
     setQueryDate(ctx.date);
+    if (!reachRef.current) reachRef.current = parseReachability(REACHABILITY_EDGES);
+    const params: SelfBuiltQueryParams = {
+      from: ctx.from.code,
+      to: ctx.to.code,
+      date: ctx.date,
+      hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
+      maxTransfers: 1, // 占位；阶段二按选中数定
+      graph: reachRef.current,
+      coords: CITY_COORDS,
+      cityOf: cityOfStation,
+      maxHubRatio: MAX_HUB_DETOUR_RATIO,
+      maxHubs: MAX_HUBS,
+      minHubs: MIN_HUBS,
+      maxDetourChecks: 20,
+      beamPerStation: 24,
+      beamSize: 480,
+    };
+    stageRef.current = params;
+    setCandidates(selectHubCandidates(params));
+    setSelected([]);
+    setJourneys([]);
+    setPrices({});
+    setView('hubs');
+    setStatus({ text: '候选枢纽（离线计算，未发起任何请求）', kind: 'info' });
+  }
+
+  /** 用户点选 / 取消一个候选枢纽（最多 2 个；顺序无关） */
+  function toggleHub(code: string): void {
+    setSelected((prev) => {
+      if (prev.includes(code)) return prev.filter((c) => c !== code);
+      if (prev.length >= 2) return prev;
+      return [...prev, code];
+    });
+  }
+
+  /** 阶段二（D68）：按用户选中的枢纽跑查询 */
+  async function runSelfBuilt(): Promise<void> {
+    const params = stageRef.current;
+    if (!params || !selected.length || runningRef.current) return;
+    runningRef.current = true;
     setQuerying(true);
     setView('selfbuilt');
     setJourneys([]);
-    setPrices({});
     setStatus({ text: '正在自研枚举中转…', kind: 'info' });
 
     try {
-      if (!reachRef.current) reachRef.current = parseReachability(REACHABILITY_EDGES);
       const rateLimit = { concurrency: 3, intervalMs: 300 } as const;
-      const params = {
-        from: ctx.from.code,
-        to: ctx.to.code,
-        date: ctx.date,
-        hubs: buildHubPool(cityOfStation(ctx.from.code), cityOfStation(ctx.to.code)),
-        maxTransfers: ctx.maxTransfers ?? 1,
-        graph: reachRef.current,
-        coords: CITY_COORDS,
-        cityOf: cityOfStation,
-        maxHubRatio: MAX_HUB_DETOUR_RATIO,
-        maxHubs: MAX_HUBS,
-        minHubs: MIN_HUBS,
-        maxDetourChecks: 20,
-        beamPerStation: 24,
-        beamSize: 480,
+      const maxTransfers = selected.length === 2 ? 2 : 1;
+      // 枢纽锁定（D68）：跳过过滤，原序查询用户所选；边预算留余量（d²+2d 恰好打满偏脆）
+      const d = selected.length;
+      const maxEdges = d === 1 ? 2 : d * d + 2 * d + 2;
+      const runParams: SelfBuiltQueryParams = {
+        ...params,
+        hubs: selected,
+        hubsLocked: true,
+        maxTransfers,
       };
 
-      // 请求量预估 + 超限确认（T50/D65）——发起前先算，避免静默上百请求
-      const est = estimateSelfBuiltRequests(params, { intervalMs: rateLimit.intervalMs });
+      // 请求量预估 + 超限确认（T50/D65）——发起前先算
+      const est = estimateSelfBuiltRequests(runParams, { intervalMs: rateLimit.intervalMs });
       if (est.seconds >= 15) {
         const ok = await new Promise<boolean>((resolve) => {
           Modal.confirm({
@@ -307,18 +355,15 @@ export default function App() {
         }
       }
 
-      // 边预算按预筛后枢纽数 D 取真实上界（T41）：一次换乘 2D、二次换乘 D²+2D
-      const d = selectHubCodes(params).length;
-      const maxEdges = params.maxTransfers === 1 ? 2 * d : d * d + 2 * d;
-
+      const ctx = ctxRef.current!;
       const buildDeps = createSelfBuiltDeps(
-        { from: ctx.from.code, to: ctx.to.code, date: ctx.date, hubs: [], maxTransfers: 1 },
+        { from: params.from, to: params.to, date: params.date, hubs: [], maxTransfers: 1 },
         { token: ctx.token, base: API_BASE },
       );
-      const r = await runSelfBuiltQuery({ ...params, maxEdges, rateLimit }, buildDeps);
+      const r = await runSelfBuiltQuery({ ...runParams, maxEdges, rateLimit }, buildDeps);
       setJourneys(r.journeys);
       setStatus({
-        text: `自研中转 ${r.journeys.length} 条方案（${r.hubs.length} 个枢纽，扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
+        text: `自研中转 ${r.journeys.length} 条方案（经 ${r.hubs.length} 个枢纽，扩展 ${r.edges} 条边${r.removed ? `，剔除回头 ${r.removed} 条` : ''}）`,
         kind: 'info',
       });
     } catch (e) {
@@ -340,7 +385,13 @@ export default function App() {
         <QueryForm querying={querying} onDirect={onDirect} onTransfer={onTransfer} onSelfBuilt={onSelfBuilt} />
         {view !== 'idle' && (
           <h2 className="results-title">
-            {view === 'direct' ? '直达车次' : view === 'selfbuilt' ? '自研中转方案' : '中转方案'}
+            {view === 'direct'
+              ? '直达车次'
+              : view === 'selfbuilt'
+                ? '自研中转方案'
+                : view === 'hubs'
+                  ? '选择中转枢纽'
+                  : '中转方案'}
           </h2>
         )}
         <StatusBar text={status.text} kind={status.kind} />
@@ -356,15 +407,43 @@ export default function App() {
             onQueryBuyShort={fetchBuyShort}
           />
         )}
-        {view === 'selfbuilt' && (
-          <SelfBuiltList
-            journeys={journeys}
-            date={queryDate}
-            stationNames={STATION_NAMES}
-            prices={prices}
-            loadingPrice={loadingPrice}
-            onQueryPrice={fetchPrice}
+        {view === 'hubs' && (
+          <HubPicker
+            candidates={candidates}
+            selected={selected}
+            onChange={setSelected}
+            onRun={runSelfBuilt}
+            onCancel={() => {
+              setView('idle');
+              setCandidates([]);
+              setSelected([]);
+            }}
+            running={querying}
           />
+        )}
+        {view === 'selfbuilt' && (
+          <>
+            <div className="results-toolbar">
+              <Button
+                type="link"
+                onClick={() => {
+                  // 回到枢纽选择，清空旧结果避免误以为已更新
+                  setJourneys([]);
+                  setView('hubs');
+                }}
+              >
+                重新选择枢纽
+              </Button>
+            </div>
+            <SelfBuiltList
+              journeys={journeys}
+              date={queryDate}
+              stationNames={STATION_NAMES}
+              prices={prices}
+              loadingPrice={loadingPrice}
+              onQueryPrice={fetchPrice}
+            />
+          </>
         )}
         {view === 'transfer' && (
           <TransferList

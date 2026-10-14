@@ -124,3 +124,23 @@
   .ticket-caption { margin-bottom: 12px; }
   .leg-content { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heading" "times" "seats" "price"; gap: 10px; }
 }
+
+/* ── D68 中转枢纽选择 ────────────────────────────────────── */
+.hub-picker { display: grid; gap: 16px; }
+.hub-picker-hint { margin: 0; color: var(--rail-secondary); font-size: 13px; line-height: 1.6; }
+.hub-picker-hint strong { color: var(--rail-text); font-variant-numeric: tabular-nums; }
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.hub-card {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; border: 1px solid var(--rail-line); border-radius: 12px;
+  background: var(--rail-surface); color: var(--rail-text); cursor: pointer;
+  font: inherit; text-align: left; transition: border-color .15s, background .15s;
+}
+.hub-card:hover:not(:disabled) { border-color: var(--rail-blue); }
+.hub-card:disabled { cursor: not-allowed; opacity: .45; }
+.hub-card--on { border-color: var(--rail-blue); background: color-mix(in srgb, var(--rail-blue) 12%, var(--rail-surface)); }
+.hub-card--on .hub-card-city { color: var(--rail-blue); }
+.hub-card-city { font-weight: 600; }
+.hub-card-ratio { color: var(--rail-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+.hub-picker-actions { display: flex; gap: 10px; }
+.results-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }

@@ -78,32 +78,23 @@ test('QueryForm：口令默认隐藏，可切换显示并带上查询参数', as
   })));
 });
 
-// ── D58：最多换乘次数选择器 ───────────────────────────────
-test('QueryForm：默认「最多换乘 1 次」，可切到 2 次并随查询上报', async () => {
-  const onTransfer = vi.fn();
-  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} onSelfBuilt={vi.fn()} />);
-  expect(screen.getByText('最多换乘')).toBeTruthy();
-
-  fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
-  fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
-  // 打开选择器并选「2 次」
-  fireEvent.mouseDown(container.querySelector('#transfers')!);
-  fireEvent.click(await screen.findByTitle('2 次'));
-  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
-
-  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({ maxTransfers: 2 })));
+// ── D58 失效：不再有「最多换乘」选择器（D68 改由选中枢纽数决定）──
+test('QueryForm：不再有「最多换乘」选择器', () => {
+  render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  expect(screen.queryByText('最多换乘')).toBeNull();
 });
 
-test('QueryForm：不选时默认 maxTransfers = 1', async () => {
+test('QueryForm：查中转上报的上下文不含 maxTransfers', async () => {
   const onTransfer = vi.fn();
   const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} onSelfBuilt={vi.fn()} />);
   fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
   fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
   fireEvent.click(screen.getByRole('button', { name: '查中转' }));
-  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({ maxTransfers: 1 })));
+  await waitFor(() => expect(onTransfer).toHaveBeenCalled());
+  expect(onTransfer.mock.calls[0]![0]).not.toHaveProperty('maxTransfers');
 });
 
-test('QueryForm：点「自研中转」触发 onSelfBuilt 并带上换乘次数', async () => {
+test('QueryForm：点「自研中转」触发 onSelfBuilt', async () => {
   const onSelfBuilt = vi.fn();
   const { container } = render(
     <QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={onSelfBuilt} />,
@@ -112,5 +103,5 @@ test('QueryForm：点「自研中转」触发 onSelfBuilt 并带上换乘次数'
   fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
   fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
   fireEvent.click(screen.getByRole('button', { name: '自研中转' }));
-  await waitFor(() => expect(onSelfBuilt).toHaveBeenCalledWith(expect.objectContaining({ maxTransfers: 1 })));
+  await waitFor(() => expect(onSelfBuilt).toHaveBeenCalledWith(expect.objectContaining({ date: expect.any(String) })));
 });
