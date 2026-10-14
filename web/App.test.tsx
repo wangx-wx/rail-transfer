@@ -8,13 +8,21 @@ import type { PlanGroup } from '../shared/types.ts';
 import transferFixture from '../test/fixtures/transfer-10.json';
 
 vi.mock('./components/QueryForm.tsx', () => ({
-  default: ({ onTransfer, querying }: { onTransfer: (ctx: QueryContext) => void; querying: boolean }) => (
-    <button disabled={querying} onClick={() => onTransfer({
-      from: { code: 'ICW', stations: ['ICW'] },
-      to: { code: 'ZGE', stations: ['ZGE'] },
-      date: '2026-10-07',
-      token: 'test-token',
-    })}>查中转</button>
+  default: ({ onTransfer, onSelfBuilt, querying }: { onTransfer: (ctx: QueryContext) => void; onSelfBuilt: (ctx: QueryContext) => void; querying: boolean }) => (
+    <>
+      <button disabled={querying} onClick={() => onTransfer({
+        from: { code: 'ICW', stations: ['ICW'] },
+        to: { code: 'ZGE', stations: ['ZGE'] },
+        date: '2026-10-07',
+        token: 'test-token',
+      })}>查中转</button>
+      <button disabled={querying} onClick={() => onSelfBuilt({
+        from: { code: 'VNP', stations: ['VNP'] },
+        to: { code: 'AOH', stations: ['AOH'] },
+        date: '2026-10-20',
+        token: '',
+      })}>自研中转</button>
+    </>
   ),
 }));
 
@@ -113,4 +121,47 @@ test('全部成功但无方案时正常完成，不显示失败警告', async ()
   expect(await screen.findByText('完成：中转 0 条方案')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(calls[0]).toEqual([]);
+});
+
+// ── D68：自研中转交互式选择枢纽 ──────────────────────────
+test('自研中转：点按钮后瞬出候选枢纽，且 fetch 零调用（候选阶段零请求）', () => {
+  const fetchMock = vi.fn(async () => Response.json({ ok: true, data: { data: {} } }));
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: '自研中转' }));
+
+  expect(screen.getByText('选择中转枢纽')).toBeTruthy();
+  expect(screen.getByText('天津')).toBeTruthy();   // 候选卡片
+  expect(fetchMock).not.toHaveBeenCalled();          // 核心卖点：零请求
+});
+
+test('自研中转：未选枢纽时查询禁用', () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ok: true, data: { data: {} } })));
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: '自研中转' }));
+  expect((screen.getByRole('button', { name: /查\s*询/ }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test('自研中转：选 1 个枢纽后点查询 → 只对该枢纽发请求（请求数在个位）', async () => {
+  const leftTicketCalls: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/left-ticket') {
+      leftTicketCalls.push(`${url.searchParams.get('from')}>${url.searchParams.get('to')}`);
+      return Response.json({ ok: true, data: { data: { result: [], map: {} } } });
+    }
+    if (url.pathname === '/api/stopover') return Response.json({ ok: true, data: { data: { data: [] } } });
+    return Response.json({ ok: true, data: { data: {} } });
+  }));
+
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: '自研中转' }));
+  fireEvent.click(screen.getByRole('button', { name: /天津/ }));  // 选 1 个
+  fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+
+  expect(await screen.findByText(/自研中转 .* 条方案/)).toBeTruthy();
+  // 选 1 个枢纽：枚举 2 次（去+回），远小于全枚举的 24 次
+  expect(leftTicketCalls.length).toBeLessThanOrEqual(4);
+  expect(leftTicketCalls.length).toBeGreaterThan(0);
 });

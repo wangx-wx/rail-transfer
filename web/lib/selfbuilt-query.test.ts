@@ -25,9 +25,6 @@ function deps(routes: Record<string, Train[]>, calls: string[]): SelfBuiltQueryD
       calls.push(`${from}>${to}`);
       return routes[`${from}>${to}`] ?? [];
     },
-    async stopsOf(train) {
-      return [train.fromStation, train.toStation];
-    },
   };
 }
 
@@ -60,9 +57,8 @@ test('编排：枢纽全被方向过滤剔除 → 空结果，不发请求', asy
   expect(calls).toHaveLength(0);
 });
 
-test('编排：经停查询只对最终候选行程做（T43）', async () => {
+test('编排：只发枚举请求，无经停补查（T56）', async () => {
   const calls: string[] = [];
-  let stopQueries = 0;
   const d: SelfBuiltQueryDeps = {
     async directTrains(from, to) {
       calls.push(`${from}>${to}`);
@@ -72,10 +68,9 @@ test('编排：经停查询只对最终候选行程做（T43）', async () => {
       };
       return routes[`${from}>${to}`] ?? [];
     },
-    async stopsOf(train) { stopQueries++; return [train.fromStation, train.toStation]; },
   };
   await runSelfBuiltQuery({ from: 'O', to: 'D', date: '2026-10-08', maxTransfers: 1, hubs: ['H'], graph: { O: ['H'], H: ['D'] } }, d);
-  expect(stopQueries).toBe(2); // 仅一条候选行程的两程
+  expect(calls).toEqual(['O>H', 'H>D']); // 仅两条枚举边
 });
 
 // ── 城市名/站码转换 + 方向过滤（T39/T40）───────────────────
@@ -125,20 +120,21 @@ test('selectHubCodes：几何硬砍剔除绕行枢纽（缺坐标不砍）', () 
   expect(selectHubCodes(p)).toEqual(['NEAR']);
 });
 
-test('estimateSelfBuiltRequests：一次换乘 ≈ 2N + detour×2', () => {
+test('estimateSelfBuiltRequests：一次换乘 = 2N（T56 起不含经停补查）', () => {
   const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const, hubs: ['NEAR'], coords: COORDS };
-  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 20 });
-  // 1 枢纽：2×1 + 20×2 = 42；42×300ms = 12.6s → 13
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300 });
+  // 1 枢纽：枚举 2×1=2；2×300ms = 0.6s → 1
   expect(est.hubs).toBe(1);
-  expect(est.requests).toBe(42);
-  expect(est.seconds).toBe(13);
+  expect(est.requests).toBe(2);
+  expect(est.seconds).toBe(1);
 });
 
-test('estimateSelfBuiltRequests：二次换乘 ≈ N²+2N + detour×2', () => {
-  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 2 as const, hubs: ['NEAR'], coords: COORDS };
-  const est = estimateSelfBuiltRequests(p, { intervalMs: 300, detourChecks: 10 });
-  // 1²+2×1 + 10×2 = 23
-  expect(est.requests).toBe(23);
+test('estimateSelfBuiltRequests：二次换乘 = N²+2N（T56 起不含经停补查）', () => {
+  const coords = { O: [0, 0], D: [10, 0], NEAR: [5, 0], NEAR2: [5, 1] } satisfies Record<string, [number, number]>;
+  const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 2 as const, hubs: ['NEAR', 'NEAR2'], coords };
+  const est = estimateSelfBuiltRequests(p, { intervalMs: 300 });
+  // 2²+2×2 = 8
+  expect(est.requests).toBe(8);
 });
 
 test('selectHubCodes：minHubs 保底——短途 OD 不因几何硬砍归零', () => {
@@ -147,4 +143,57 @@ test('selectHubCodes：minHubs 保底——短途 OD 不因几何硬砍归零', 
   const p = { from: 'O', to: 'D', date: 'x', maxTransfers: 1 as const, hubs: ['H1', 'H2', 'H3'], coords, maxHubRatio: 1.2 };
   expect(selectHubCodes(p)).toHaveLength(0); // 无保底 → 砍光
   expect(selectHubCodes({ ...p, minHubs: 2 })).toHaveLength(2); // 有保底 → 补回 2 个
+});
+
+// ── 候选枢纽（D68 交互式选择）────────────────────────────
+import { selectHubCandidates } from './selfbuilt-query.ts';
+import { CITY_STATIONS } from '../data/stations.ts';
+import { CITY_COORDS } from '../data/coords.ts';
+import { buildHubPool } from './hubs.ts';
+import { cityOfStation } from './city.ts';
+import { REACHABILITY_EDGES } from '../data/reachability.ts';
+import { parseReachability } from './reach.ts';
+import { MAX_HUB_DETOUR_RATIO, MAX_HUBS, MIN_HUBS } from '../../shared/constants.ts';
+
+test('selectHubCandidates：北京→上海候选 = 12 个，比值升序且 ≤ 1.6（固化实测）', () => {
+  const p = {
+    from: CITY_STATIONS['北京'].code, to: CITY_STATIONS['上海'].code, date: 'x',
+    maxTransfers: 1 as const, hubs: buildHubPool('北京', '上海'),
+    graph: parseReachability(REACHABILITY_EDGES), coords: CITY_COORDS, cityOf: cityOfStation,
+    maxHubRatio: MAX_HUB_DETOUR_RATIO, maxHubs: MAX_HUBS, minHubs: MIN_HUBS,
+  };
+  const cs = selectHubCandidates(p);
+  expect(cs).toHaveLength(12);
+  expect(cs.every((c) => c.ratio != null && c.ratio <= MAX_HUB_DETOUR_RATIO)).toBe(true);
+  // 比值升序
+  for (let i = 1; i < cs.length; i++) expect(cs[i]!.ratio!).toBeGreaterThanOrEqual(cs[i - 1]!.ratio!);
+  // 第一个是天津
+  expect(cs[0]!.city).toBe('天津');
+});
+
+test('selectHubCandidates：hubsLocked 原序返回、不被 maxHubRatio/方向过滤剔除（D68 关键回归）', () => {
+  // 故意选「绕行比值 > 1.6 会被硬砍」的枢纽；不传 minHubs 以免保底又把它们补回
+  const p = {
+    from: CITY_STATIONS['北京'].code, to: CITY_STATIONS['上海'].code, date: 'x',
+    maxTransfers: 1 as const,
+    hubs: [CITY_STATIONS['昆明'].code, CITY_STATIONS['哈尔滨'].code], // 昆明极绕(3.99)、哈尔滨反方向
+    coords: CITY_COORDS, cityOf: cityOfStation,
+    maxHubRatio: MAX_HUB_DETOUR_RATIO, maxHubs: MAX_HUBS,
+  };
+  // 未锁定：全被剔除（昆明超 1.6、哈尔滨反方向）
+  expect(selectHubCandidates(p)).toHaveLength(0);
+  // 锁定：原序原样返回，两个都在、顺序不变
+  const locked = selectHubCandidates({ ...p, hubsLocked: true });
+  expect(locked.map((c) => c.city)).toEqual(['昆明', '哈尔滨']);
+  expect(locked[0]!.ratio).toBeGreaterThan(1.6); // 昆明比值确实超线，但仍被保留
+});
+
+test('selectHubCodes：是 selectHubCandidates 的取码版', () => {
+  const p = {
+    from: CITY_STATIONS['北京'].code, to: CITY_STATIONS['上海'].code, date: 'x',
+    maxTransfers: 1 as const, hubs: buildHubPool('北京', '上海'),
+    graph: parseReachability(REACHABILITY_EDGES), coords: CITY_COORDS, cityOf: cityOfStation,
+    maxHubRatio: MAX_HUB_DETOUR_RATIO, maxHubs: MAX_HUBS, minHubs: MIN_HUBS,
+  };
+  expect(selectHubCodes(p)).toEqual(selectHubCandidates(p).map((c) => c.code));
 });

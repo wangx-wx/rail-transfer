@@ -84,6 +84,13 @@ interface Partial {
   arriveAbs: number;
 }
 
+/** 一条待取边：由某个 partial 接续到某 target */
+interface Task {
+  partial: Partial;
+  target: string;
+  trains: Promise<Train[]>;
+}
+
 /** 一程的绝对到达时刻（分钟，以首程发车日为 0 点基准）——T44 跨天自算 */
 function arriveAbs(startAbs: number, duration: string, arriveTime: string, startTime: string): number {
   const dur = durationToMinutes(duration);
@@ -170,31 +177,49 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
   const destCity = cityOf(p.to);
   const budget = p.maxEdges ?? Number.POSITIVE_INFINITY;
 
-  const cache = new Map<string, Train[]>();
+  const cache = new Map<string, Promise<Train[]>>();
   let edges = 0;
 
-  async function query(from: string, to: string): Promise<Train[]> {
-    const key = `${from}>${to}`;
+  /**
+   * 查 from→to 的城市级直达车次。
+   *
+   * ⚠️ 缓存键按**城市**归一（T55）：上游收到城市站码会**自动展开全城车站**（D19/T35，
+   * 实测「天津西→济南」与「天津→济南」返回完全相同的 110 趟），而一程的到达站是上游
+   * 挑的具体站（天津有 TJP/TXP/TIP/WWP）。若按具体站做键，同一对城市会被重复查 4 次——
+   * 这是北京→上海选 2 个枢纽时枚举请求从 6 涨到 30 的**唯一原因**。
+   *
+   * 归一后同城只查一次；**请求参数仍用调用方给的站码**（上游结果与站码无关），
+   * 换乘的同站/异站判定也仍用具体站（见 `connectLegs`），不受影响。
+   *
+   * 缓存存 **Promise**：分层已并发派发，同城的并发调用必须共享同一次请求，否则
+   * 同时未命中会各发一次（归一失效）。
+   */
+  function query(from: string, to: string): Promise<Train[]> {
+    const key = `${cityOf(from)}>${cityOf(to)}`;
     const hit = cache.get(key);
     if (hit) return hit;
     edges++;
-    const trains = await api.directTrains(from, to);
-    cache.set(key, trains);
-    return trains;
+    const pending = api.directTrains(from, to);
+    cache.set(key, pending);
+    return pending;
   }
 
   const results: Journey[] = [];
 
-  /** 从 partial 接续到 target：到终点的进 `done`，其余成为下一层的部分行程 */
-  async function connect(
+  /**
+   * 用已取到的车次列表接续（纯计算，无 await）。
+   * 到终点的进 `done`，其余成为下一层的部分行程。
+   */
+  function connectWith(
     partial: Partial,
     target: string,
+    trains: Train[],
     done: Journey[],
     next: Partial[],
-  ): Promise<void> {
+  ): void {
     const last = partial.journey.legs[partial.journey.legs.length - 1]!;
     if (cityOf(target) === cityOf(last.toStation)) return;
-    for (const train of await query(last.toStation, target)) {
+    for (const train of trains) {
       const xfer = connectLegs(last, train, partial.arriveAbs, sameCity);
       if (!xfer) continue;
       const journey: Journey = {
@@ -210,18 +235,69 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
     }
   }
 
-  // 首层：出发地 → 各枢纽
-  let layer: Partial[] = [];
-  for (const hub of p.hubs) {
-    if (cityOf(hub) === cityOf(p.from) || cityOf(hub) === destCity) continue;
-    if (edges >= budget) break;
-    for (const train of await query(p.from, hub)) {
-      if (cityOf(train.fromStation) !== cityOf(p.from)) continue;
-      const startAbs = timeToMinutes(train.startTime);
-      if (startAbs == null) continue;
-      const arr = arriveAbs(startAbs, train.duration, train.arriveTime, train.startTime);
-      layer.push({ journey: { legs: [train], transfers: [] }, arriveAbs: arr });
+  /**
+   * 登记一条待取的边；越界（预算不足且缓存未命中）返回 null。
+   *
+   * 预算只对**未命中的边**计数：命中缓存的边不再花预算，故不会被预算挡住
+   * （归一后同城边必定命中，只有首条真正花钱）。
+   */
+  function planTask(partial: Partial, target: string, reserve = 0): Task | null {
+    const last = partial.journey.legs[partial.journey.legs.length - 1];
+    const from = last ? last.toStation : p.from;
+    if (cityOf(target) === cityOf(from)) return null; // 同城不必换乘
+    const key = `${cityOf(from)}>${cityOf(target)}`;
+    if (!cache.has(key) && edges + reserve >= budget) return null;
+    return { partial, target, trains: query(from, target) };
+  }
+
+  /**
+   * 把「各 partial × 各 target」的边查询**并发**派发出去。
+   *
+   * ⚠️ 并发是必须的：原实现逐个 `await query(...)`，耗时 = 请求数 × 单次往返
+   * （用户线上 1~2s/次 → 数十次即数分钟）。限流仍由注入网关把关（T41：
+   * 并发 ≤3、间隔 ≥300ms），这里只是不再人为串行。
+   * `reserve` 为后续轮次要预留的边数（保证浅层「直达终点」先完成）。
+   */
+  async function expand(
+    partials: Partial[],
+    targets: string[],
+    done: Journey[],
+    next: Partial[],
+    reserve = 0,
+  ): Promise<void> {
+    const tasks: Task[] = [];
+    for (const partial of partials) {
+      for (const target of targets) {
+        const t = planTask(partial, target, reserve);
+        if (t) tasks.push(t);
+      }
     }
+    const lists = await Promise.all(tasks.map((t) => t.trains));
+    tasks.forEach((t, i) => connectWith(t.partial, t.target, lists[i]!, done, next));
+  }
+
+  // 首层：出发地 → 各枢纽
+  const firstTargets = p.hubs.filter(
+    (hub) => cityOf(hub) !== cityOf(p.from) && cityOf(hub) !== destCity,
+  );
+  let layer: Partial[] = [];
+  {
+    const root: Partial = { journey: { legs: [], transfers: [] }, arriveAbs: 0 };
+    const tasks: Task[] = [];
+    for (const hub of firstTargets) {
+      const t = planTask(root, hub);
+      if (t) tasks.push(t);
+    }
+    const lists = await Promise.all(tasks.map((t) => t.trains));
+    tasks.forEach((t, i) => {
+      for (const train of lists[i]!) {
+        if (cityOf(train.fromStation) !== cityOf(p.from)) continue;
+        const startAbs = timeToMinutes(train.startTime);
+        if (startAbs == null) continue;
+        const arr = arriveAbs(startAbs, train.duration, train.arriveTime, train.startTime);
+        layer.push({ journey: { legs: [train], transfers: [] }, arriveAbs: arr });
+      }
+    });
   }
   // ⚠️ 首层**不按到达时间剪枝**：晚到的首程能接上不同的第二程，剪掉会丢一次换乘结果。
   // 只保留束宽上限作为兜底。
@@ -229,24 +305,12 @@ export async function planJourneys(p: JourneyParams, api: JourneyApi): Promise<J
 
   for (let depth = 0; depth < p.maxTransfers; depth++) {
     // 第一趟：所有部分行程先试「直达终点」——浅层（少换乘）结果优先。
-    if (edges < budget) {
-      for (const partial of layer) {
-        if (edges >= budget) break;
-        await connect(partial, p.to, results, []);
-      }
-    }
+    await expand(layer, [p.to], results, []);
     if (depth + 1 >= p.maxTransfers) break;
 
     // 第二趟：向其他枢纽扩展形成下一层；为下一层的『直达终点』预留配额。
-    const reserve = p.hubs.length;
     const next: Partial[] = [];
-    for (const partial of layer) {
-      if (edges + reserve >= budget) break;
-      for (const hub of p.hubs) {
-        if (edges + reserve >= budget) break;
-        await connect(partial, hub, [], next);
-      }
-    }
+    await expand(layer, p.hubs, [], next, p.hubs.length);
     // 中间层（2 段及以上）按到达时间支配剪枝，控制二次换乘的规模（T49）
     layer = pruneLayer(next, cityOf, p.beamPerStation, p.beamSize);
   }

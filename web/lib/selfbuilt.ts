@@ -1,17 +1,22 @@
 /**
- * 自研中转编排（T37/T43/T45，D56~D63）
+ * 自研中转编排（T37/T45，D56~D63）
  *
- * 把纯算法（journey / detour / journeys）与真实取数缝合：
+ * 把纯算法（journey / journeys）与真实取数缝合：
  *   1. 分层扩展（planJourneys）得到候选行程
- *   2. 只对候选行程补查经停（T43），做回头判定（D60），明确折返删除（D61）
- *   3. 疑似绕远只标记（D61），最后去重 + 加权排序 + 上限截断（T45）
+ *   2. 疑似绕远只标记（D61），最后去重 + 加权排序 + 上限截断（T45）
  *
  * 不触碰网络与 UI：取数通过注入的 `SelfBuiltDeps`。Worker 零改动（T42）。
+ *
+ * ⚠️ **2026-10-15 移除经停补查与回头判定（T56）**：原第 2 步对每条候选行程补查
+ * 经停（`/api/stopover`）做「回头路线」判定，是请求量的最大头（选 2 枢纽 55 次里
+ * 占 49 次）。但本算法把行程拆成**独立的直达段再拼接**（北京→天津、天津→济南、
+ * 济南→上海），每段都是真实直达车次，**不存在回头路**；且判定用「首程中间经停站」
+ * 与后续程比对，而首程常是贴出发地的短程（裁剪后只剩起讫两站）→ 已过站集合恒空、
+ * 判定根本不触发。故整体删除。
  */
 
 import { planJourneys } from './journey.ts';
-import { detectBacktrack } from './detour.ts';
-import { capJourneys, dedupeJourneys, journeyFlags, sortJourneys } from './journeys.ts';
+import { capJourneys, dedupeJourneys, journeyFlags } from './journeys.ts';
 import { isDetour } from './detour.ts';
 import type { Journey, JourneyApi, JourneyParams } from './journey.ts';
 import type { Train } from '../../shared/types.ts';
@@ -34,8 +39,6 @@ export interface ScoredJourney extends Journey {
 export interface SelfBuiltDeps {
   /** from→to 的城市级直达车次（已解析） */
   directTrains(from: string, to: string): Promise<Train[]>;
-  /** 一程的完整经停站序列（站名）；失败应返回该程起讫两站 */
-  stopsOf(train: Train): Promise<string[]>;
 }
 
 /** 自研查询参数 */
@@ -55,15 +58,11 @@ export interface SelfBuiltParams {
   beamPerStation?: number;
   /** 每层部分行程总数上限（T49） */
   beamSize?: number;
-  /** 经停补查的候选上限（T43 请求量收敛），默认 20 */
-  maxDetourChecks?: number;
 }
 
 /** 自研查询结果 */
 export interface SelfBuiltResult {
   journeys: ScoredJourney[];
-  /** 因回头被删除的候选数 */
-  removed: number;
   /** 实际扩展的边数 */
   edges: number;
 }
@@ -99,41 +98,7 @@ export async function runSelfBuiltTransfer(
 
   const raw = await planJourneys(params, api);
 
-  // 回头判定：只对候选行程补查经停（T43），明确折返删除（D61）。
-  // 候选可能上百条，故**先去重 + 加权排序取前 K 条**再补经停，避免上百次串行请求。
-  const ranked = sortJourneys(dedupeJourneys(raw)).slice(0, p.maxDetourChecks ?? 20);
-
-  // 经停 memo：同一趟车会出现在多条候选行程里（D 个枢纽 × K 条候选），
-  // 按 trainNo 去重可省掉大量重复 `/api/stopover`（F1/F2）。
-  const stopsMemo = new Map<string, Promise<string[]>>();
-  const stopsOfLeg = (leg: Train): Promise<string[]> => {
-    const key = `${leg.trainNo}:${leg.fromStationNo}:${leg.toStationNo}`;
-    let hit = stopsMemo.get(key);
-    if (!hit) {
-      hit = deps.stopsOf(leg);
-      stopsMemo.set(key, hit);
-    }
-    return hit;
-  };
-
-  let removed = 0;
-  const kept: Journey[] = [];
-  // 各候选的经停并行取数（各程互不依赖），由注入网关统一节流（T41）。
-  const checked = await Promise.all(
-    ranked.map(async (j) => {
-      const stopsByLeg = await Promise.all(j.legs.map(stopsOfLeg));
-      return { j, backtrack: detectBacktrack(j.legs, stopsByLeg) };
-    }),
-  );
-  for (const { j, backtrack } of checked) {
-    if (backtrack) {
-      removed++;
-      continue;
-    }
-    kept.push(j);
-  }
-
-  const candidates = dedupeJourneys(kept);
+  const candidates = dedupeJourneys(raw);
   const best = Math.min(...candidates.map((j) => journeyFlags(j).totalMinutes).filter((n) => n > 0), Number.POSITIVE_INFINITY);
 
   const scored: ScoredJourney[] = candidates.map((j) => {
@@ -149,5 +114,5 @@ export async function runSelfBuiltTransfer(
   });
 
   const capped = capJourneys(scored, p.maxResults ?? 200) as ScoredJourney[];
-  return { journeys: capped, removed, edges };
+  return { journeys: capped, edges };
 }

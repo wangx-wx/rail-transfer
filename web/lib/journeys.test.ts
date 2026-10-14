@@ -108,3 +108,23 @@ test('按总耗时排序：忽略换乘惩罚，纯按 totalMinutes', () => {
   const byWeight = sortJourneys([two, three], { mode: 'weighted' });
   expect(byWeight[0]).toBe(two);
 });
+
+// ── 分组截断（T45 修订 2026-10-14）────────────────────────
+test('capJourneys：按换乘次数分组各自取前 M 条（二次换乘不被一次挤掉）', () => {
+  // 造 30 条一次换乘（耗时更短）+ 5 条二次换乘（耗时更长）
+  const one: Journey[] = Array.from({ length: 30 }, (_, i) => j2(`G${i}`, `H${i}`, 20 + i));
+  const two: Journey = {
+    legs: [
+      t('G1', 'O', 'H', '08:00', '09:00', '01:00'),
+      t('G3', 'H', 'K', '09:10', '09:40', '00:30'),
+      t('G4', 'K', 'D', '10:00', '11:00', '01:00'),
+    ],
+    transfers: [
+      { station: 'H', waitMinutes: 10, sameStation: true },
+      { station: 'K', waitMinutes: 20, sameStation: true },
+    ],
+  };
+  const capped = capJourneys([...one, two], 10);
+  expect(capped.filter((j) => j.transfers.length === 1)).toHaveLength(10);
+  expect(capped.filter((j) => j.transfers.length === 2)).toHaveLength(1); // 二次换乘保留
+});

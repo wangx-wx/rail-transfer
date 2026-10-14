@@ -1,59 +1,23 @@
 /**
- * 绕行判定（D60/D61）—— 官方「回头路线」规则 + 耗时阈值兜底
+ * 绕行判定（D61）—— 耗时阈值兜底
  *
- * 官方专利 CN114912659A 定义：第一行程车次先后途经某车站，后续车次又返回该站，
- * 或前后行程途经 OD 轨迹有重叠，即为**回头路线**。
+ * ⚠️ **2026-10-15（T56）**：原「回头路线」判定（`detectBacktrack`，D60 官方规则）
+ * 已随经停补查一并移除。自研行程是**独立直达段的拼接**（北京→天津、天津→济南、
+ * 济南→上海），每段都是真实直达车次，不存在回头路；且该判定依赖首程的中间经停站，
+ * 而首程常是贴出发地的短程（裁剪后只剩起讫两站）→ 已过站集合恒空、根本不触发。
+ * 请求量上的代价却是最大头。详见 `selfbuilt.ts` 顶部说明。
  *
- * 需要第一程的经停站序列（T43：只对候选方案 runtime 补查 queryByTrainNo），
- * 故本模块是纯函数，经停数组由调用方传入。
- *
- * 处理策略（D61）：明确折返 → 直接删除；疑似绕远 → 只标记不删除。
+ * 保留的「耗时绕行」（本文件）为纯离线判定，零请求。
  */
-
-/** 一程的最小标识（站名/站码任选，只要前后一致） */
-export interface DetourLeg {
-  fromStation: string;
-  toStation: string;
-  trainNo: string;
-}
 
 /**
  * 耗时绕行系数（D60 兜底，2026-10-13 由 2.0 收紧）：总耗时 > 最优 × 该系数 → 标记疑似绕远。
  *
  * 原取 2.0（调研报告 §8.3 QDKStorm `BADLIM 2.0`）过宽，实测几乎没有方案被打标；
- * 收紧到 1.5 以抓出中度绕路。**只标记不删除**（D61），且本轮起参与加权排序惩罚（D63）。
+ * 收紧到 1.5 以抓出中度绕路。**只标记不删除**（D61），且参与加权排序惩罚（D63）。
  * 阈值待真实查询标定。
  */
 export const DETOUR_RATIO = 1.5;
-
-/**
- * 回头路线判定（D60 官方规则）。
- *
- * @param legs    各程（按顺序）
- * @param stops   各程的经停站名序列（与 legs 等长）；缺失的程传空数组
- * @returns 是否存在回头（后续程重走某前序程的已过站）
- */
-export function detectBacktrack(legs: DetourLeg[], stops: string[][]): boolean {
-  if (legs.length < 2) return false;
-
-  // 累积「前序程已经过」的站集合；换乘站本身不计入（它是下一程的起点，合理地会再次出现）
-  const passed = new Set<string>();
-  for (let i = 0; i < legs.length; i++) {
-    const seq = stops[i] ?? [];
-    const boarding = seq[0] ?? legs[i]!.fromStation;
-    const alighting = seq[seq.length - 1] ?? legs[i]!.toStation;
-    // 除首末外，中间的经停站算「已过站」
-    const via = seq.slice(1, -1);
-    for (const s of via) {
-      if (passed.has(s)) return true;
-    }
-    // 到达站若在后续程中再出现，由后续程的 via 判定捕获
-    for (const s of via) passed.add(s);
-    if (i > 0) passed.add(boarding);
-    void alighting;
-  }
-  return false;
-}
 
 /**
  * 耗时阈值兜底（D60）：总耗时是否超过最优的 `DETOUR_RATIO` 倍。

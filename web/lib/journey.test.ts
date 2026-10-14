@@ -175,6 +175,38 @@ test('硬上限：edges 超预算即停止扩展（T41）', async () => {
   expect(api.calls.length).toBeLessThanOrEqual(1);
 });
 
+// ── 同城归一取数（T55）────────────────────────────────────
+test('同城归一：同一对城市的不同具体站只查一次（上游按城市展开）', async () => {
+  // 第一程到 H（同城另有 H2/H3），第二程从 H2 发车；上游对「H→D」「H2→D」返回同一批车。
+  const legOH2 = train({ trainNo: '1', trainCode: 'G1', fromStation: 'O', toStation: 'H2', startTime: '08:00', arriveTime: '09:00', duration: '01:00' });
+  const api = fakeApi({ 'O>H': [legOH], 'O>H2': [legOH2], 'H>D': [legHD], 'H2>D': [legHD] });
+  const cityOf = (c: string): string => (c === 'H' || c === 'H2' ? 'H' : c);
+  const js = await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs: ['H', 'H2'], maxTransfers: 1, cityOf },
+    api,
+  );
+  expect(js.length).toBeGreaterThan(0);
+  // 「O→H」与「O→H2」同城 → 只查一次；「H→D」与「H2→D」同理
+  expect(api.calls.filter((c) => c === 'O>H' || c === 'O>H2')).toHaveLength(1);
+  expect(api.calls.filter((c) => c === 'H>D' || c === 'H2>D')).toHaveLength(1);
+});
+
+test('同城归一：并发派发下同城边也只命中一次（Promise 缓存）', async () => {
+  // 首层同时派发多个同城枢纽，未命中时不得各发一次
+  const api = fakeApi({
+    'O>H': [legOH],
+    'O>H2': [legOH],
+    'H>D': [legHD],
+    'H2>D': [legHD],
+  });
+  const cityOf = (c: string): string => (c === 'H' || c === 'H2' ? 'H' : c);
+  await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs: ['H', 'H2'], maxTransfers: 1, cityOf },
+    api,
+  );
+  expect(api.calls).toHaveLength(2); // 仅 O>H 与 H>D 两条边
+});
+
 // ── 分层扩展（BFS）：二次换乘模式下仍产出一次换乘结果 ──────
 test('分层 BFS：maxTransfers=2 时，一次换乘结果不被二次扩展挤掉', async () => {
   // 枢纽 H 可一段到终点；枢纽 K 需要两段。二者都能到终点。
