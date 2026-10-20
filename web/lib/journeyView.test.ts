@@ -20,7 +20,7 @@ function leg(code: string, from: string, to: string, start: string, arrive: stri
 function j(transfers: number): ScoredJourney {
   return {
     legs: [leg('G1', 'A', 'B', '08:00', '09:00', '01:00'), leg('G2', 'B', 'C', '09:30', '10:30', '01:00')],
-    transfers: Array.from({ length: transfers }, (_, i) => ({ station: `S${i}`, waitMinutes: 30, sameStation: true })),
+    transfers: Array.from({ length: transfers }, (_, i) => ({ station: `S${i}`, toStation: `S${i}`, waitMinutes: 30, sameStation: true })),
     transfersCount: transfers,
     totalMinutes: 150,
     detour: false,

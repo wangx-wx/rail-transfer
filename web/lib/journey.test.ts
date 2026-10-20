@@ -126,6 +126,24 @@ test('一次换乘：同城异站等待 >= 60 分 → 产出', async () => {
   expect(js[0]!.transfers[0]!.sameStation).toBe(false);
 });
 
+test('换乘点带出下一程出发站（T61：同城异站要展示「到达站 → 出发站」）', async () => {
+  const crossD = train({ trainNo: '2', trainCode: 'G2', fromStation: 'H2', toStation: 'D', startTime: '10:10', arriveTime: '11:40', duration: '01:30' });
+  const api = fakeApi({ 'O>H': [legOH], 'H>D': [crossD] });
+  const cityOf = (c: string): string => (c === 'H' || c === 'H2' ? 'H' : c);
+  const [j] = await planJourneys(
+    { from: 'O', to: 'D', date: DATE, hubs: ['H'], maxTransfers: 1, cityOf },
+    api,
+  );
+  expect(j!.transfers[0]!.station).toBe('H');
+  expect(j!.transfers[0]!.toStation).toBe('H2');
+});
+
+test('同站换乘时下一程出发站与到达站相同', async () => {
+  const api = fakeApi({ 'O>H': [legOH], 'H>D': [legHD] });
+  const [j] = await planJourneys({ from: 'O', to: 'D', date: DATE, hubs: ['H'], maxTransfers: 1 }, api);
+  expect(j!.transfers[0]!.toStation).toBe('H');
+});
+
 test('一次换乘：多个枢纽、部分无车次 → 只产出可行组合', async () => {
   const api = fakeApi({
     'O>H': [legOH],

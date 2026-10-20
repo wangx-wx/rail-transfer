@@ -21,7 +21,7 @@ function t(code: string, from: string, to: string, start: string, arrive: string
 
 const j2 = (a = 'G1', b = 'G2', wait = 30): Journey => ({
   legs: [t(a, 'O', 'H', '08:00', '09:00', '01:00'), t(b, 'H', 'D', '09:30', '11:00', '01:30')],
-  transfers: [{ station: 'H', waitMinutes: wait, sameStation: true }],
+  transfers: [{ station: 'H', toStation: 'H', waitMinutes: wait, sameStation: true }],
 });
 
 test('总耗时 = 各程时长 + 换乘等待之和', () => {
@@ -58,8 +58,8 @@ test('加权排序：换乘次数少者优先（相同总耗时）', () => {
       t('G4', 'K', 'D', '10:00', '10:30', '00:30'),
     ],
     transfers: [
-      { station: 'H', waitMinutes: 10, sameStation: true },
-      { station: 'K', waitMinutes: 20, sameStation: true },
+      { station: 'H', toStation: 'H', waitMinutes: 10, sameStation: true },
+      { station: 'K', toStation: 'K', waitMinutes: 20, sameStation: true },
     ],
   };
   // two 总耗时 180；three 总耗时 60+10+30+20+30=150 → 更短但换乘更多
@@ -99,8 +99,8 @@ test('按总耗时排序：忽略换乘惩罚，纯按 totalMinutes', () => {
       t('G4', 'K', 'D', '10:00', '10:30', '00:30'),
     ],
     transfers: [
-      { station: 'H', waitMinutes: 10, sameStation: true },
-      { station: 'K', waitMinutes: 20, sameStation: true },
+      { station: 'H', toStation: 'H', waitMinutes: 10, sameStation: true },
+      { station: 'K', toStation: 'K', waitMinutes: 20, sameStation: true },
     ],
   }; // 150 分钟，更短但换乘多
   const byTime = sortJourneys([two, three], { mode: 'time' });
@@ -120,8 +120,8 @@ test('capJourneys：按换乘次数分组各自取前 M 条（二次换乘不被
       t('G4', 'K', 'D', '10:00', '11:00', '01:00'),
     ],
     transfers: [
-      { station: 'H', waitMinutes: 10, sameStation: true },
-      { station: 'K', waitMinutes: 20, sameStation: true },
+      { station: 'H', toStation: 'H', waitMinutes: 10, sameStation: true },
+      { station: 'K', toStation: 'K', waitMinutes: 20, sameStation: true },
     ],
   };
   const capped = capJourneys([...one, two], 10);

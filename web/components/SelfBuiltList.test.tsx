@@ -26,7 +26,7 @@ function journey(over: Partial<ScoredJourney> = {}): ScoredJourney {
       leg('G1101', 'GZQ', 'WHN', '08:00', '11:00', '03:00'),
       leg('G2202', 'WHN', 'SNN', '11:20', '13:30', '02:10'),
     ],
-    transfers: [{ station: 'WHN', waitMinutes: 20, sameStation: true }],
+    transfers: [{ station: 'WHN', toStation: 'WHN', waitMinutes: 20, sameStation: true }],
     transfersCount: 1,
     totalMinutes: 310,
     detour: false,
@@ -58,8 +58,8 @@ test('SelfBuiltList：两次换乘分行展示', () => {
   const three = journey({
     transfersCount: 2,
     transfers: [
-      { station: 'WHN', waitMinutes: 20, sameStation: true },
-      { station: 'ZAF', waitMinutes: 25, sameStation: true },
+      { station: 'WHN', toStation: 'WHN', waitMinutes: 20, sameStation: true },
+      { station: 'ZAF', toStation: 'ZAF', waitMinutes: 25, sameStation: true },
     ],
     legs: [
       leg('G1101', 'GZQ', 'WHN', '08:00', '11:00', '03:00'),

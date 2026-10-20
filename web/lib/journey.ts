@@ -40,6 +40,14 @@ export function durationToMinutes(duration: string): number | null {
 export interface JourneyTransfer {
   /** 换乘站码（上一程的到达站） */
   station: string;
+  /**
+   * 下一程出发站码（T61）。
+   *
+   * 同城异站时与 `station` 不同——接驳方案要展示「到达站 → 出发站」，
+   * 只存到达站会让「换乘 北京南」看不出下趟车其实在北京西。
+   * ⚠️ 只用于展示与接驳查询，**不参与**换乘可行性判定。
+   */
+  toStation: string;
   /** 换乘等待（分钟） */
   waitMinutes: number;
   /** 是否同站换乘（false = 同城异站） */
@@ -128,7 +136,7 @@ export function connectLegs(
   if (wait == null) return null;
   const minWait = same ? MIN_WAIT_SAME_STATION : MIN_WAIT_CROSS_STATION;
   if (wait < minWait) return null;
-  return { station: prev.toStation, waitMinutes: wait, sameStation: same };
+  return { station: prev.toStation, toStation: next.fromStation, waitMinutes: wait, sameStation: same };
 }
 
 /**
