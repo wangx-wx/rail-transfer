@@ -19,6 +19,7 @@ import {
   pickFastestTransit,
 } from './connection.ts';
 import type {
+  ConnectionResult,
   DrivingPlan,
   TencentDrivingRoute,
   TencentTransitResult,
@@ -510,4 +511,51 @@ test('loadConnection：缺坐标 / 跨城直接返回，不发任何请求', asy
   const r = await loadConnection({ ...PAIR, to: far }, api);
   expect(r.kind).toBe('crossCity');
   expect(calls).toEqual([]);
+});
+
+// ── 缓存正确性：时间相关的判定不能跨行程串味 ──────────────
+test('loadConnection：同站对不同等待 → 标记各算各的（不被缓存串味）', async () => {
+  const { api, calls } = mockConnApi({
+    transit: { routes: [transitRoute()] },   // 30 分
+    driving: { distance: 11057, duration: 16 },
+  });
+  const cache = new Map();
+  // 等待 90 分：富余；等待 20 分：公交 30 分赶不上、打车 16 分赶得上 → 需打车
+  const a = await loadConnection(PAIR, api, cache);
+  const b = await loadConnection({ ...PAIR, waitMinutes: 20 }, api, cache);
+  expect(a.kind === 'ok' && a.flags).toEqual([]);
+  expect(b.kind === 'ok' && b.flags.map((f) => f.label)).toEqual(['需打车']);
+  // 上游仍只请求一次（缓存的是取数结果，不是判定结果）
+  expect(calls).toEqual(['transit', 'driving']);
+});
+
+test('loadConnection：夜间出发的打车价与日间不同（价格也按本次行程算）', async () => {
+  const { api, calls } = mockConnApi({ transit: { routes: [transitRoute()] }, driving: { distance: 20000, duration: 30 } });
+  const cache = new Map();
+  const day = await loadConnection({ ...PAIR, departureTime: '14:00' }, api, cache);
+  const night = await loadConnection({ ...PAIR, departureTime: '23:00' }, api, cache);
+  const fareOf = (r: unknown): number => {
+    const x = r as Extract<ConnectionResult, { kind: 'ok' }>;
+    return x.driving.kind === 'plan' ? x.driving.plan.fare!.yuan : NaN;
+  };
+  expect(fareOf(night)).toBeGreaterThan(fareOf(day));
+  expect(calls).toEqual(['transit', 'driving']);
+});
+
+// ── 乘车段内的多条线路是「并列可选」，不是顺序乘坐 ────────
+test('parseTransitRoutes：同一乘车段的多条线路只取第一条，换乘次数不误增', () => {
+  const twoAlternatives = transitRoute({
+    steps: [
+      { mode: 'TRANSIT', lines: [
+        { ...ride().lines![0]!, title: '1路' },
+        { ...ride().lines![0]!, title: '2路' },
+      ] },
+      ride({ title: '地铁7号线' }),
+    ],
+  });
+  const p = parseTransitRoutes({ routes: [twoAlternatives] })[0]!;
+  // 两段乘车 → 换乘 1 次（不是 2 次）
+  expect(p.transfers).toBe(1);
+  // 只把实际可照着走的一条列进线路表
+  expect(p.lines.map((l) => l.title)).toEqual(['1路', '地铁7号线']);
 });
