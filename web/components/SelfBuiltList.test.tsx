@@ -279,3 +279,30 @@ test('SelfBuiltList：换乘行仍标明同站 / 同城异站', () => {
   );
   expect(screen.getByText('同城异站')).toBeTruthy();
 });
+
+test('SelfBuiltList：接驳价格不并入二等座参考价（D72）', () => {
+  const cross = journey({
+    transfers: [{ station: 'WHN', toStation: 'WCN', waitMinutes: 70, sameStation: false }],
+  });
+  render(
+    <SelfBuiltList
+      journeys={[cross]}
+      date="2026-10-08"
+      stationNames={{ WHN: '武汉', WCN: '武昌' }}
+      prices={{ 'G1101|01|02': { O: 300 }, 'G2202|01|02': { O: 280 } }}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+      connections={{
+        'WHN>WCN': {
+          kind: 'ok',
+          km: 12,
+          transit: { kind: 'empty' },
+          driving: { kind: 'plan', plan: { durationMinutes: 20, distanceMeters: 12000, fare: { yuan: 40, source: 'traffic' }, tollYuan: 0 } },
+          flags: [],
+        },
+      }}
+    />,
+  );
+  // 参考价仍是 300 + 280，接驳的 ¥40 不进总价
+  expect(screen.getByText('二等座参考价 ¥580')).toBeTruthy();
+});
