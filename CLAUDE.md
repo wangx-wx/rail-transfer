@@ -1,66 +1,64 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> 本文件是项目地图与协作约定，Codex 每次开工前都会读取。它是 `CLAUDE.md` 的软链目标（`AGENTS.md -> CLAUDE.md`），改这里即可同时生效。
+>
+> 本文件只放**稳定、可复用**的约定；详细架构、协议、决策与历史一律放 `docs/` 或 `spec/`，不要堆在这里。
 
-## 我想做什么
+## 1. 项目说明
 
-做一个 12306 选票工具：查票、比中转方案、帮我做决策。
+`rail-transfer`：12306 中转换乘查询工具。在官方结果之外补出更多、更合适的中转方案，并帮用户在车次、时间、价格之间做决策。
 
-核心机会点：官方中转只给「换乘一次的部分列车」（候选枢纽被截断为 Top-N），本工具靠**强制枚举候选枢纽**把被过滤掉的方案补回来。
+- **形态**：`web/` 前端（React + Ant Design，Vite 构建，部署 GitHub Pages）+ `worker/` 代理层（Cloudflare Workers）+ `shared/` 前后端共享层。
+- **核心机会**：官方中转只返回「换乘一次的部分列车」，候选枢纽在服务端被截断为 Top-N；本工具通过强制枚举候选枢纽，把被过滤掉的方案补回来。
+- **现状**：v1 骨架已建成并端到端跑通。
+- **权威来源**：产品范围以 `spec/` 中的产品方案为准，技术实现以其下游技术方案为准；两者冲突时以产品方案为准。
 
-最终交付：GitHub Pages 前端 + Cloudflare Workers 代理层。
+## 2. 基本原则
 
-## 现状：v1 骨架已建成
+- **不懂就问**：需求、边界或方案有疑问时先向用户确认，不要臆测后直接开写；存在多种合理解释时先摆出来，不要替用户默默做选择。
+- **文档分层**：
+  - `README.md` 只保留用户入门、配置、排障和文档索引；详细架构、协议、决策与历史放到 `docs/` 或 `spec/`。
+  - `spec/` 只放按 `YYYYMMDD-<slug>.md` 命名的需求规格。
+  - 被推翻的规格保留原文，并标注取代关系（谁被谁取代），不删历史。
+- **简单优先**：只写解决问题所需的最小代码，不为假想需求加抽象或配置；建设阶段项目会大改，避免过度设计。
+- **改动收敛**：只改与任务直接相关的代码，不顺手重构或"美化"无关部分；发现无关死代码只提，不擅自删。
+- **合规底线**：定位个人低频查询；不做自动下单、验证码识别、多账号、批量抓取或绕过风控。
 
-前端（`web/`）、代理层（`worker/`）、共享层（`shared/`）已实现，端到端跑通（北京→上海得到 30+ 条中转方案）。详见 `spec/技术方案.md`。
+## 3. 开发流程
 
-**产品范围以 `spec/产品方案.md` 为准**，技术实现以 `spec/技术方案.md` 为准（决策清单均带 ID 与状态，可追加可推翻）。两份文档同构：产品方案的决策用 `D-` 前缀，技术方案用 `T` 前缀。
-
-**已确认事实（D19/T35）**：**上游按城市返回车次，所以查一个城市只传一个代表站就行，不用为每个小站分别查。**
-
-- 传「广州站」返回的车里就有广州南出发的；传「广州南」结果完全一致。北京侧同理（传上海站 → 返回含上海虹桥/上海松江/上海南）。2026-10-07 的 6 次实测证据已归档于 `spec/产品方案.md` §5.2。
-- 推论：取数层面**同城各站等价**，缓存/枚举按**城市**归一（`cityOf(from)>cityOf(to)`，见 T55）；不得仅因前端未展开站码而判定漏站，也无需为城市覆盖逐站补查。
-- **唯一例外——换乘等待判定必须看具体站**：同站换乘留 15 分钟，同城异站要留 60 分钟（站与站之间要跑）。故 `journey.ts` 的 `connectLegs` 仍用具体 `toStation === fromStation` 判定，不参与归一。
-
-此事实已确认，后续无需重复质疑或验证。
-
-`docs/`、`spike/` 是前序探索资料（被 .gitignore 忽略，仅存本地），部分结论已过时——见 `spec/产品方案.md` 第六节。
-
-## 工具链：Vite + TypeScript + vitest
-
-**约束**：不在系统层面安装东西（`brew install` 等）；项目内的 npm 依赖正常使用。
-
-- **前端**：**React 19 + Ant Design 6**，Vite 构建，TypeScript（strict），产物进 `dist/`。
-  组件放 `web/components/`，视图模型纯函数放 `web/lib/view.ts`。
-- **Worker**：TypeScript，wrangler 自带 esbuild 打包。
-- **测试**：vitest，分三组 project（见 `vitest.config.ts`）：
-  - `worker/**` 跑在**真实 workerd 运行时**（`@cloudflare/vitest-pool-workers`），
-    能测到 `getSetCookie()`、Cache API、isolate 复用等 Workers 专有行为。
-  - `web/**/*.test.ts` 跑 **Node** 环境（纯函数 + 读 `test/fixtures/`）。
-  - `web/**/*.test.tsx` 跑 **jsdom** 环境（React 组件渲染，`@testing-library/react`）。
-    按扩展名区分：纯函数写 `.test.ts`，组件测试写 `.test.tsx`。
-- **类型共享**：`shared/` 放类型与常量，两边都能 import。
+- **TDD**：先写会失败的测试，再写实现让它通过。`web/` 的页面脚本、`worker/` 的代理脚本都属于需要测试的代码。
+- **小步提交**：每个小功能完成、且 `npm test` 与 `npm run typecheck` 通过后立即提交；提交格式 `type(scope): desc`，type 取 `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。
+- **代码规模**：除测试文件外，单个生产代码文件原则上不超过 **500** 行；确有必要时不得无故超过 **700** 行。
+- **环境约束**：不在系统层面安装东西（`brew install` 等），项目内的 npm 依赖正常使用。
 
 常用命令：
+
 ```bash
-npm install                 # 首次
+npm install                 # 首次安装依赖
 npm test                    # 跑全部测试（vitest）
 npm run typecheck           # tsc --noEmit
-npm run dev                 # Vite 开发服务器（/api 代理到 :8787）
+npm run dev                 # Vite 开发服务器（/api 代理到 Worker）
 npm run build               # 构建前端到 dist/
 node tools/gen-stations.mjs # 重新生成城市站表（纯静态，零网络）
-node tools/dev-server.mjs   # 零依赖本地服务器（备选，进程内调 Worker）
 ```
 
-## 开发规范
+## 4. 项目地图
 
-**测试**：新写的代码要配套测试用例——`web/` 的页面脚本、`worker/` 的代理脚本都算。提交前必须跑通 `npm test` 与 `npm run typecheck`。
+| 路径 | 作用 |
+|---|---|
+| `web/` | 前端。`App.tsx` 主界面；`components/` UI 组件；`lib/` 纯函数与视图模型（配套测试）；`data/` 构建生成的静态数据；`config.ts` 前端配置。 |
+| `worker/` | 代理层。`index.ts` 入口与路由，`source.ts` 上游 12306 访问，`wrangler.toml` 部署配置。 |
+| `shared/` | 前后端共享的类型与常量。 |
+| `spec/` | 需求规格与决策清单（产品决策 `D-`、技术决策 `T-`），权威来源。 |
+| `docs/` | 前序调研与设计资料（仅本地，被 `.gitignore` 忽略），部分结论已过时，冲突时以 `spec/` 为准。 |
+| `tools/` | 构建与维护脚本（生成站点表、可达图、本地开发服务器等）。 |
+| `test/` | 跨模块测试夹具。 |
+| `spike/` | 开工前的接口探索脚本（仅本地，被 `.gitignore` 忽略），非产品代码。 |
+| 根配置 | `vite.config.ts`、`vitest.config.ts`、`tsconfig.json`、`package.json`。 |
 
-**antd 6 注意**：优先用新 API（`Alert` 用 `title`、`Space` 用 `orientation`、`Collapse` 用 `items`），旧名会打废弃警告。不要写自定义 `<style>` 覆盖 `.ant-*` 内部类，改主题用 `ConfigProvider theme.token`。
+文档导航：
 
-**提交**：每次改动完成任务、测试通过后**先提交代码**。格式 `type(scope): desc`，type 取
-`feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。
-
-**合规**：定位个人低频查询。不做自动下单、验证码识别、多账号、批量抓取、绕过风控。实测 50 次连续查询未见速率限制，但低频原则仍保留（依据是产品定位，非实测封禁）。
-
-**建设阶段**：项目会大改，不要过度设计，不要为假想需求加抽象。
+- `spec/产品方案.md`：产品范围与决策（`D-`），冲突时以它为准。
+- `spec/技术方案.md`：技术实现与决策（`T-`），承接产品方案。
+- `README.md`：用户入门、配置、排障与文档索引。
+- 注：现有两份 `spec/` 文档沿用旧文件名，新增规格按 `YYYYMMDD-<slug>.md` 约定命名。
