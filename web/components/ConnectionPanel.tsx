@@ -194,13 +194,7 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
                     <span className="muted">
                       {' '}
                       {durationLabel(driving.plan.durationMinutes)} · {kmLabel(driving.plan.distanceMeters)}
-                      {driving.plan.fare != null && (
-                        <>
-                          {' '}
-                          · {priceLabel(driving.plan.fare.yuan)}（
-                          {driving.plan.fare.source === 'traffic' ? '路况估算' : '估算'}）
-                        </>
-                      )}
+                      {driving.plan.fare != null && <> · {priceLabel(driving.plan.fare)}（路况估算）</>}
                     </span>
                   </div>
                   {driving.plan.tollYuan > 0 && (

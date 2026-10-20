@@ -40,7 +40,7 @@ interface Props {
   /** 正在查接驳的键 */
   loadingConnection?: Set<string>;
   /** 触发查接驳 */
-  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => void;
+  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number) => void;
 }
 
 /** 一程 */
@@ -111,7 +111,6 @@ function JourneyCard({
           {j.transfers.map((t, i) => {
             // 行内只报到达站；「到达站 → 下一程出发站」由接驳面板说清（两条通路一致）
             const key = `${t.station}>${t.toStation}`;
-            const next = j.legs[i + 1];
             return (
               <div className="transfer-wait" key={`${t.station}-${i}`}>
                 换乘 {name(t.station)}　等待 {durationLabel(t.waitMinutes)}
@@ -128,7 +127,7 @@ function JourneyCard({
                     result={connections?.[key] ?? null}
                     loading={loadingConnection?.has(key) ?? false}
                     onQuery={() =>
-                      onQueryConnection?.(t.station, t.toStation, t.waitMinutes, next?.startTime ?? '')
+                      onQueryConnection?.(t.station, t.toStation, t.waitMinutes)
                     }
                   />
                 )}

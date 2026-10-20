@@ -196,7 +196,7 @@ test('parseTransitRoutes：空 routes → 空数组，pickFastest 得 null', () 
 });
 
 // ── 打车方案解析（D76）────────────────────────────────────
-test('parseDrivingRoute：取腾讯给的路况估算打车费，来源标 traffic', () => {
+test('parseDrivingRoute：上游给了打车费就展示，标「路况估算」', () => {
   const p = parseDrivingRoute({
     distance: 11057,
     duration: 16,
@@ -205,43 +205,21 @@ test('parseDrivingRoute：取腾讯给的路况估算打车费，来源标 traff
   })!;
   expect(p.durationMinutes).toBe(16);
   expect(p.distanceMeters).toBe(11057);
-  expect(p.fare?.yuan).toBe(33);
-  expect(p.fare?.source).toBe('traffic');
+  expect(p.fare).toBe(33);
   expect(p.tollYuan).toBe(0);
 });
 
-test('parseDrivingRoute：taxi_fare 缺失时按城市计价表估算，来源标 tariff', () => {
-  const p = parseDrivingRoute({ distance: 11057, duration: 16, toll: 0 }, { city: '北京' })!;
-  expect(p.fare?.source).toBe('tariff');
-  // 北京：起步 13 元含 3 km，之后 2.3 元/km，另加 1 元燃油附加 →
-  // 11.057 km 取整到 0.1 km 档：13 + (11.1-3)*2.3 + 1 = 32.63 ≈ 33
-  expect(p.fare?.yuan).toBeGreaterThanOrEqual(32);
-  expect(p.fare?.yuan).toBeLessThanOrEqual(34);
-});
-
-test('parseDrivingRoute：taxi_fare 缺失且城市不在 Top 40 → 不给价（不瞎估）', () => {
-  const p = parseDrivingRoute({ distance: 11057, duration: 16 }, { city: '不存在的城市' })!;
+test('parseDrivingRoute：上游没给车费 → 不给价，只给时间与里程（不做本地估价）', () => {
+  // 实测：短途（≤50 km）腾讯不返回 taxi_fare，本功能正落在这个区间
+  const p = parseDrivingRoute({ distance: 11057, duration: 16, toll: 0 })!;
+  expect(p.durationMinutes).toBe(16);
+  expect(p.distanceMeters).toBe(11057);
   expect(p.fare).toBeNull();
 });
 
-test('parseDrivingRoute：夜间时段按出发时刻加价（22:00~06:00）', () => {
-  const day = parseDrivingRoute({ distance: 20000, duration: 30 }, { city: '北京', departureTime: '14:00' })!;
-  const night = parseDrivingRoute({ distance: 20000, duration: 30 }, { city: '北京', departureTime: '23:00' })!;
-  expect(night.fare!.yuan).toBeGreaterThan(day.fare!.yuan);
-  // 22:00 起算夜间；06:00 之后恢复日间
-  const edgeNight = parseDrivingRoute({ distance: 20000, duration: 30 }, { city: '北京', departureTime: '22:00' })!;
-  const earlyMorning = parseDrivingRoute({ distance: 20000, duration: 30 }, { city: '北京', departureTime: '05:59' })!;
-  const morning = parseDrivingRoute({ distance: 20000, duration: 30 }, { city: '北京', departureTime: '06:00' })!;
-  expect(edgeNight.fare!.yuan).toBe(night.fare!.yuan);
-  expect(earlyMorning.fare!.yuan).toBe(night.fare!.yuan);
-  expect(morning.fare!.yuan).toBe(day.fare!.yuan);
-});
-
-test('parseDrivingRoute：有路况估算价时，夜间不再叠加（上游已是最终价）', () => {
-  const base = { distance: 20000, duration: 30, taxi_fare: { fare: 60 } };
-  const day = parseDrivingRoute(base, { city: '北京', departureTime: '14:00' })!;
-  const night = parseDrivingRoute(base, { city: '北京', departureTime: '23:00' })!;
-  expect(night.fare!.yuan).toBe(day.fare!.yuan);
+test('parseDrivingRoute：taxi_fare 为 0 或负数视为无效，不给价', () => {
+  expect(parseDrivingRoute({ distance: 11057, duration: 16, taxi_fare: { fare: 0 } })!.fare).toBeNull();
+  expect(parseDrivingRoute({ distance: 11057, duration: 16, taxi_fare: { fare: -1 } })!.fare).toBeNull();
 });
 
 test('parseDrivingRoute：过路费单列（toll > 0）', () => {
@@ -268,7 +246,7 @@ function transit(minutes: number, over: Partial<TransitPlan> = {}): TransitPlan 
 }
 
 function driving(minutes: number): DrivingPlan {
-  return { durationMinutes: minutes, distanceMeters: 11000, fare: { yuan: 33, source: 'traffic' }, tollYuan: 0 };
+  return { durationMinutes: minutes, distanceMeters: 11000, fare: 33, tollYuan: 0 };
 }
 
 test('connectionFlags：打车都赶不上 → 接驳时间不足（不重复给「需打车」）', () => {
@@ -526,19 +504,6 @@ test('loadConnection：同站对不同等待 → 标记各算各的（不被缓�
   expect(a.kind === 'ok' && a.flags).toEqual([]);
   expect(b.kind === 'ok' && b.flags.map((f) => f.label)).toEqual(['需打车']);
   // 上游仍只请求一次（缓存的是取数结果，不是判定结果）
-  expect(calls).toEqual(['transit', 'driving']);
-});
-
-test('loadConnection：夜间出发的打车价与日间不同（价格也按本次行程算）', async () => {
-  const { api, calls } = mockConnApi({ transit: { routes: [transitRoute()] }, driving: { distance: 20000, duration: 30 } });
-  const cache = new Map();
-  const day = await loadConnection({ ...PAIR, departureTime: '14:00' }, api, cache);
-  const night = await loadConnection({ ...PAIR, departureTime: '23:00' }, api, cache);
-  const fareOf = (r: unknown): number => {
-    const x = r as Extract<ConnectionResult, { kind: 'ok' }>;
-    return x.driving.kind === 'plan' ? x.driving.plan.fare!.yuan : NaN;
-  };
-  expect(fareOf(night)).toBeGreaterThan(fareOf(day));
   expect(calls).toEqual(['transit', 'driving']);
 });
 

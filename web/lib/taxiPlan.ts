@@ -1,10 +1,12 @@
 /**
- * 同城异站接驳：腾讯驾车响应解析与打车费（D76）
+ * 同城异站接驳：腾讯驾车响应解析（D76）
  *
  * 从 `connection.ts` 拆出（保持单文件 ≤500 行）。判定口径见 D69~D76 / T57~T62。
+ *
+ * ⚠️ **不本地估价**：实测 `taxi_fare` 只在长途返回（11 km 两次均无、401 km 有），
+ * 而接驳限定 ≤50 km（D75），正落在「不返回」区间。上游没给就只展示时间与里程，
+ * 不按计价表推算——宁可少一行，也不编一个看起来精确的数。
  */
-
-import { TAXI_TARIFF, estimateTaxiFare, isNightDeparture } from './taxiTariff.ts';
 
 // ── 腾讯驾车响应与打车方案（D76）──────────────────────────
 
@@ -16,60 +18,34 @@ export interface TencentDrivingRoute {
   duration: number;
   /** 高速过路费（元） */
   toll?: number;
-  /** 预估打车费（元）；**非必有**，文档未说明触发条件 */
+  /** 预估打车费（元）；**非必有**——实测只在长途返回 */
   taxi_fare?: { fare?: number };
 }
-
-/** 打车价格来源（D76：两者在 UI 上必须可区分） */
-export type TaxiFareSource = 'traffic' | 'tariff';
 
 /** 打车方案 */
 export interface DrivingPlan {
   durationMinutes: number;
   distanceMeters: number;
-  /** 车费；null = 既无路况估算、城市也不在计价表内 */
-  fare: { yuan: number; source: TaxiFareSource } | null;
+  /** 车费（元）；null = 上游没给（本功能下是常态，不补估） */
+  fare: number | null;
   /** 过路费（元），D76：> 0 时单独一行 */
   tollYuan: number;
-}
-
-/** 解析驾车方案的额外输入 */
-export interface DrivingParseOptions {
-  /** 城市名（计价表兜底用；取 `STATION_CITIES` 口径） */
-  city?: string;
-  /** 出发时刻 `HH:MM`（夜间加价按它判断，D76） */
-  departureTime?: string;
 }
 
 /**
  * 解析驾车响应为打车方案（D76）。
  *
- * 价格优先级：腾讯 `taxi_fare`（标「路况估算」）→ 城市计价表推算（标「估算」）。
- * 两者都没有就不给价——宁可少一行，也不编一个数。
+ * 只用上游给的车费；没给就 `fare: null`。
  */
-export function parseDrivingRoute(
-  route: TencentDrivingRoute | undefined,
-  opts: DrivingParseOptions = {},
-): DrivingPlan | null {
+export function parseDrivingRoute(route: TencentDrivingRoute | undefined): DrivingPlan | null {
   if (!route) return null;
-  const rideMinutes = route.duration ?? 0;
-  const meters = route.distance ?? 0;
-  const tollYuan = route.toll ?? 0;
-
   const quoted = route.taxi_fare?.fare;
-  let fare: DrivingPlan['fare'] = null;
-  if (typeof quoted === 'number' && Number.isFinite(quoted) && quoted > 0) {
-    // 上游已是含夜间加价的最终价，此处不再叠加
-    fare = { yuan: quoted, source: 'traffic' };
-  } else {
-    const tariff = opts.city ? TAXI_TARIFF[opts.city] : undefined;
-    if (tariff) {
-      fare = {
-        yuan: estimateTaxiFare(tariff, meters, isNightDeparture(opts.departureTime)),
-        source: 'tariff',
-      };
-    }
-  }
+  const fare = typeof quoted === 'number' && Number.isFinite(quoted) && quoted > 0 ? quoted : null;
 
-  return { durationMinutes: rideMinutes, distanceMeters: meters, fare, tollYuan };
+  return {
+    durationMinutes: route.duration ?? 0,
+    distanceMeters: route.distance ?? 0,
+    fare,
+    tollYuan: route.toll ?? 0,
+  };
 }

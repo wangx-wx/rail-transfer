@@ -5,7 +5,7 @@
  * 把结果塞进跨查询复用的内存缓存。判定与解析全在 `connection.ts`（纯函数）。
  */
 
-import { codeOfStation, cityOfStation } from './city.ts';
+import { codeOfStation } from './city.ts';
 import { loadConnection } from './connection.ts';
 import type { ConnectionApi, ConnectionCache, ConnectionResult, TencentEnvelope, LatLng } from './connection.ts';
 import type { CoordSource } from './stationCoords.ts';
@@ -76,8 +76,6 @@ export interface ConnectionRequest {
   /** 下一程出发站码 */
   toCode: string;
   waitMinutes: number;
-  /** 出发时刻 `HH:MM`（夜间加价用） */
-  departureTime?: string;
 }
 
 /**
@@ -99,9 +97,6 @@ export async function loadConnectionByCode(
       fromCode: req.fromCode,
       toCode: req.toCode,
       waitMinutes: req.waitMinutes,
-      ...(req.departureTime ? { departureTime: req.departureTime } : {}),
-      // 计价表按城市兜底（D76）；两个站在同城，用出发站城市即可
-      city: cityOfStation(req.toCode),
     },
     deps.api,
     deps.cache,

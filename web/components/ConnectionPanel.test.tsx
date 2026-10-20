@@ -42,7 +42,7 @@ function okResult(over: Partial<Extract<ConnectionResult, { kind: 'ok' }>> = {})
     },
     driving: {
       kind: 'plan' as const,
-      plan: { durationMinutes: 16, distanceMeters: 11057, fare: { yuan: 33, source: 'traffic' as const }, tollYuan: 0 },
+      plan: { durationMinutes: 16, distanceMeters: 11057, fare: 33, tollYuan: 0 },
     },
     flags: [],
     ...over,
@@ -93,7 +93,7 @@ test('ConnectionPanel：展开后给出线路名、上下车站、步行距离�
   expect(screen.getByText(/直线\s*5\.9\s*公里/)).toBeTruthy();
 });
 
-test('ConnectionPanel：票价与打车费分别展示，打车费标「路况估算」（D76）', () => {
+test('ConnectionPanel：上游给了车费就展示并标「路况估算」（D76）', () => {
   render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
   fireEvent.click(screen.getByText(/展开详情/));
   expect(screen.getByText(/¥4/)).toBeTruthy();
@@ -101,21 +101,25 @@ test('ConnectionPanel：票价与打车费分别展示，打车费标「路况�
   expect(screen.getByText(/路况估算/)).toBeTruthy();
 });
 
-test('ConnectionPanel：计价表推算的车费标「估算」而非「路况估算」（D76 必须可区分）', () => {
+test('ConnectionPanel：上游没给车费 → 只给时间与里程，不显示任何价格或估价（D76）', () => {
   const r = okResult();
   r.driving = {
     kind: 'plan',
-    plan: { durationMinutes: 16, distanceMeters: 11057, fare: { yuan: 33, source: 'tariff' }, tollYuan: 0 },
+    plan: { durationMinutes: 16, distanceMeters: 11057, fare: null, tollYuan: 0 },
   };
-  render(<ConnectionPanel point={POINT} result={r} loading={false} onQuery={noop} />);
+  const { container } = render(<ConnectionPanel point={POINT} result={r} loading={false} onQuery={noop} />);
   fireEvent.click(screen.getByText(/展开详情/));
-  expect(screen.getByText(/估算/)).toBeTruthy();
-  expect(screen.queryByText(/路况估算/)).toBeNull();
+  const dr = container.querySelectorAll('.connection-detail')[1]!.textContent ?? '';
+  expect(dr).toMatch(/16分/);
+  expect(dr).toMatch(/11\.1 公里/);
+  // 不打价格、不出现「估算」字样
+  expect(dr).not.toMatch(/¥/);
+  expect(dr).not.toMatch(/估算/);
 });
 
 test('ConnectionPanel：过路费 > 0 时单独一行（D76）', () => {
   const r = okResult();
-  r.driving = { kind: 'plan', plan: { durationMinutes: 50, distanceMeters: 60000, fare: { yuan: 150, source: 'traffic' }, tollYuan: 25 } };
+  r.driving = { kind: 'plan', plan: { durationMinutes: 50, distanceMeters: 60000, fare: 150, tollYuan: 25 } };
   render(<ConnectionPanel point={POINT} result={r} loading={false} onQuery={noop} />);
   fireEvent.click(screen.getByText(/展开详情/));
   expect(screen.getByText(/过路费\s*¥25/)).toBeTruthy();

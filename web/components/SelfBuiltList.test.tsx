@@ -297,7 +297,7 @@ test('SelfBuiltList：接驳价格不并入二等座参考价（D72）', () => {
           kind: 'ok',
           km: 12,
           transit: { kind: 'empty' },
-          driving: { kind: 'plan', plan: { durationMinutes: 20, distanceMeters: 12000, fare: { yuan: 40, source: 'traffic' }, tollYuan: 0 } },
+          driving: { kind: 'plan', plan: { durationMinutes: 20, distanceMeters: 12000, fare: 40, tollYuan: 0 } },
           flags: [],
         },
       }}

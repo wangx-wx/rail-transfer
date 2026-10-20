@@ -62,10 +62,6 @@ export interface ConnectionQuery {
   toCode: string;
   /** 换乘等待（分钟） */
   waitMinutes: number;
-  /** 出发时刻 `HH:MM`（夜间加价用） */
-  departureTime?: string;
-  /** 城市名（计价表兜底用） */
-  city?: string;
 }
 
 /**
@@ -144,10 +140,7 @@ export async function loadConnection(
       : drivingRaw.status !== 0
         ? failure(drivingRaw)
         : (() => {
-            const plan = parseDrivingRoute(drivingRaw.result?.routes?.[0], {
-              ...(q.city ? { city: q.city } : {}),
-              ...(q.departureTime ? { departureTime: q.departureTime } : {}),
-            });
+            const plan = parseDrivingRoute(drivingRaw.result?.routes?.[0]);
             return plan ? { kind: 'plan' as const, plan } : { kind: 'empty' as const };
           })();
 

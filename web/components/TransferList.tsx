@@ -48,7 +48,7 @@ interface Props {
   /** 正在查接驳的键 */
   loadingConnection?: Set<string>;
   /** 触发查接驳 */
-  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => void;
+  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number) => void;
 }
 
 /** 同城异站换乘的接驳入口（D69：官方通路与自研通路共用同一组件） */
@@ -89,7 +89,7 @@ function ConnectionEntry({ plan: p, connections, loadingConnection, onQueryConne
       }}
       result={connections?.[key] ?? null}
       loading={loadingConnection?.has(key) ?? false}
-      onQuery={() => onQueryConnection?.(fromCode, toCode, p.waitMinutes, next.startTime)}
+      onQuery={() => onQueryConnection?.(fromCode, toCode, p.waitMinutes)}
     />
   );
 }

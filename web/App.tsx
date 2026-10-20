@@ -175,7 +175,7 @@ export default function App() {
    * 只发一次；跨查询复用（接驳与乘车日期无关，T60）。
    */
   const fetchConnection = useCallback(
-    async (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => {
+    async (fromCode: string, toCode: string, waitMinutes: number) => {
       const ctx = ctxRef.current;
       const key = `${fromCode}>${toCode}`;
       if (!ctx || loadingConnection.has(key)) return;
@@ -186,7 +186,7 @@ export default function App() {
       setLoadingConnection((prev) => new Set(prev).add(key));
       try {
         const result = await loadConnectionByCode(
-          { fromCode, toCode, waitMinutes, departureTime },
+          { fromCode, toCode, waitMinutes },
           {
             coords: coordSourceRef.current,
             api: createConnectionApi({ token: ctx.token, base: API_BASE }),

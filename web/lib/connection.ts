@@ -5,9 +5,6 @@
  * 只负责「给定坐标与上游响应 → 展示模型」，请求由调用方注入。
  */
 
-import { RISK_WAIT_THRESHOLD } from '../../shared/constants.ts';
-import { TAXI_TARIFF, estimateTaxiFare, isNightDeparture } from './taxiTariff.ts';
-
 /** 经纬度（腾讯接口一律 `lat,lng` 顺序，T57） */
 export interface LatLng {
   lat: number;
@@ -73,7 +70,7 @@ export type {
   TencentTransitWalking,
 } from './transitParse.ts';
 export { parseDrivingRoute } from './taxiPlan.ts';
-export type { DrivingPlan, DrivingParseOptions, TencentDrivingRoute, TaxiFareSource } from './taxiPlan.ts';
+export type { DrivingPlan, TencentDrivingRoute } from './taxiPlan.ts';
 export { classifyTencentStatus, connectionFlags } from './connectionFlags.ts';
 export type { ConnectionFlag, ConnectionFlagInput, ConnectionFlagKind, TencentFailureKind, TencentStatus } from './connectionFlags.ts';
 export { loadConnection } from './connectionOrchestrate.ts';
