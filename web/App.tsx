@@ -25,7 +25,7 @@ import HubPicker from './components/HubPicker.tsx';
 import type { ScoredJourney } from './lib/selfbuilt.ts';
 import { findShortTicket } from './lib/buyshort.ts';
 import type { BuyShortResult } from './lib/buyshort.ts';
-import { createConnectionApi, loadConnectionByCode } from './lib/connectionAdapter.ts';
+import { createConnectionApi, isRetriableFailure, loadConnectionByCode } from './lib/connectionAdapter.ts';
 import { createCoordSource } from './lib/stationCoords.ts';
 import type { ConnectionCache, ConnectionResult } from './lib/connection.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
@@ -178,7 +178,10 @@ export default function App() {
     async (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => {
       const ctx = ctxRef.current;
       const key = `${fromCode}>${toCode}`;
-      if (!ctx || loadingConnection.has(key) || connections[key]) return;
+      if (!ctx || loadingConnection.has(key)) return;
+      // 已有成功结果就不再查；**可重试的失败**允许重查（否则「重试」按不动，D74）
+      const existing = connections[key];
+      if (existing && (existing.kind !== 'ok' || !isRetriableFailure(existing))) return;
 
       setLoadingConnection((prev) => new Set(prev).add(key));
       try {

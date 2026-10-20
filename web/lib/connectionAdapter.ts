@@ -72,7 +72,8 @@ export async function loadConnectionByCode(
 ): Promise<ConnectionResult> {
   const [from, to] = await Promise.all([deps.coords.of(req.fromCode), deps.coords.of(req.toCode)]);
   if (!from || !to) return { kind: 'noCoord' };
-  return loadConnection(
+  const key = `${req.fromCode}>${req.toCode}`;
+  const result = await loadConnection(
     {
       from,
       to,
@@ -85,6 +86,19 @@ export async function loadConnectionByCode(
     },
     deps.api,
     deps.cache,
+  );
+
+  // ⚠️ 可重试的失败**不进缓存**：否则「重试」会命中缓存里的失败结果，按钮形同虚设（D74）
+  if (isRetriableFailure(result)) deps.cache.delete(key);
+  return result;
+}
+
+/** 结果里是否有「可重试」的失败（网络 / 配额 / 瞬时后端错误） */
+export function isRetriableFailure(r: ConnectionResult): boolean {
+  if (r.kind !== 'ok') return false;
+  return (
+    (r.transit.kind === 'error' && r.transit.retriable) ||
+    (r.driving.kind === 'error' && r.driving.retriable)
   );
 }
 
