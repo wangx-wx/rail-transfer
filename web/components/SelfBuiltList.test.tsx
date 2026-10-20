@@ -229,3 +229,53 @@ test('SelfBuiltList：排序切换「按总耗时」可改变同组内顺序', (
   fireEvent.click(screen.getByText('按总耗时'));
   expect(firstCode()).toBe('A1');
 });
+
+// ── 接驳入口（D69：自研通路也提供，且共用同一组件）────────
+test('SelfBuiltList：同城异站换乘给出「查接驳」按钮与「到达站 → 出发站」', () => {
+  const cross = journey({
+    transfers: [{ station: 'WHN', toStation: 'WCN', waitMinutes: 70, sameStation: false }],
+  });
+  render(
+    <SelfBuiltList
+      journeys={[cross]}
+      date="2026-10-08"
+      stationNames={{ GZQ: '广州南', WHN: '武汉', WCN: '武昌', SNN: '十堰' }}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(screen.getByRole('button', { name: /查接驳/ })).toBeTruthy();
+  expect(screen.getByText(/武汉\s*→\s*武昌/)).toBeTruthy();
+});
+
+test('SelfBuiltList：同站换乘仍不显示接驳区', () => {
+  render(
+    <SelfBuiltList
+      journeys={[journey()]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: /查接驳/ })).toBeNull();
+});
+
+test('SelfBuiltList：换乘行仍标明同站 / 同城异站', () => {
+  const cross = journey({
+    transfers: [{ station: 'WHN', toStation: 'WCN', waitMinutes: 70, sameStation: false }],
+  });
+  render(
+    <SelfBuiltList
+      journeys={[cross]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(screen.getByText('同城异站')).toBeTruthy();
+});

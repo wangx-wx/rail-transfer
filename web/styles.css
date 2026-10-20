@@ -144,3 +144,16 @@
 .hub-card-ratio { color: var(--rail-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
 .hub-picker-actions { display: flex; gap: 10px; }
 .results-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+/* 接驳面板（D69~D76）：两条通路共用，与换乘行同列排布 */
+.connection-panel { display: grid; gap: 6px; margin-top: 6px; font-size: 13px; }
+.connection-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.connection-pair { color: var(--rail-text); }
+.connection-modes { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.connection-mode { display: inline-flex; gap: 6px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.connection-mode strong { font-weight: 600; }
+.connection-errors { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.connection-details { display: grid; gap: 8px; padding: 8px 0 2px; border-top: 1px solid var(--rail-line); }
+.connection-detail { display: grid; gap: 4px; }
+.connection-lines { display: grid; gap: 2px; }
+.connection-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.connection-line-title { font-weight: 500; }

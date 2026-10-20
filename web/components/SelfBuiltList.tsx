@@ -9,11 +9,13 @@ import { Button, Card, Collapse, Empty, Segmented, Space, Tag } from 'antd';
 import { useState } from 'react';
 
 import JourneyTimes from './JourneyTimes.tsx';
+import ConnectionPanel from './ConnectionPanel.tsx';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
 import { durationLabel, priceKey, priceLabel, seatPrices } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
 import { sortJourneys, type SortMode } from '../lib/journeys.ts';
 import type { ScoredJourney } from '../lib/selfbuilt.ts';
+import type { ConnectionResult } from '../lib/connection.ts';
 
 interface Props {
   journeys: ScoredJourney[];
@@ -33,6 +35,12 @@ interface Props {
     date: string,
     seatTypes: string,
   ) => void;
+  /** 接驳结果（键 = `到达站码>出发站码`，D70） */
+  connections?: Record<string, ConnectionResult>;
+  /** 正在查接驳的键 */
+  loadingConnection?: Set<string>;
+  /** 触发查接驳 */
+  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => void;
 }
 
 /** 一程 */
@@ -64,9 +72,12 @@ function JourneyCard({
   prices,
   loadingPrice,
   onQueryPrice,
+  connections,
+  loadingConnection,
+  onQueryConnection,
 }: { journey: ScoredJourney; date: string; name: (code: string) => string } & Pick<
   Props,
-  'prices' | 'loadingPrice' | 'onQueryPrice'
+  'prices' | 'loadingPrice' | 'onQueryPrice' | 'connections' | 'loadingConnection' | 'onQueryConnection'
 >) {
   const first = j.legs[0]!;
   const last = j.legs[j.legs.length - 1]!;
@@ -97,12 +108,33 @@ function JourneyCard({
           duration={durationLabel(j.totalMinutes)}
         />
         <div className="transfer-facts">
-          {j.transfers.map((t, i) => (
-            <div className="transfer-wait" key={`${t.station}-${i}`}>
-              换乘 {name(t.station)}　等待 {durationLabel(t.waitMinutes)}
-              <span className="muted">{t.sameStation ? '同站' : '同城异站'}</span>
-            </div>
-          ))}
+          {j.transfers.map((t, i) => {
+            // 行内只报到达站；「到达站 → 下一程出发站」由接驳面板说清（两条通路一致）
+            const key = `${t.station}>${t.toStation}`;
+            const next = j.legs[i + 1];
+            return (
+              <div className="transfer-wait" key={`${t.station}-${i}`}>
+                换乘 {name(t.station)}　等待 {durationLabel(t.waitMinutes)}
+                <span className="muted">{t.sameStation ? '同站' : '同城异站'}</span>
+                {!t.sameStation && (
+                  <ConnectionPanel
+                    point={{
+                      fromName: name(t.station),
+                      toName: name(t.toStation),
+                      fromCode: t.station,
+                      toCode: t.toStation,
+                      waitMinutes: t.waitMinutes,
+                    }}
+                    result={connections?.[key] ?? null}
+                    loading={loadingConnection?.has(key) ?? false}
+                    onQuery={() =>
+                      onQueryConnection?.(t.station, t.toStation, t.waitMinutes, next?.startTime ?? '')
+                    }
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
         {(j.detour || j.longWait || j.risky) && (
           <Space size={4} wrap>
@@ -168,7 +200,10 @@ function JourneyCard({
 /** 每组默认展开的方案数；其余折叠在「展开更多」后（零请求、数据已在内存） */
 const TOP_PER_GROUP = 5;
 
-export default function SelfBuiltList({ journeys, date, stationNames, prices, loadingPrice, onQueryPrice }: Props) {
+export default function SelfBuiltList({
+  journeys, date, stationNames, prices, loadingPrice, onQueryPrice,
+  connections, loadingConnection, onQueryConnection,
+}: Props) {
   const [sortMode, setSortMode] = useState<SortMode>('weighted');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   if (!journeys.length) return <Empty description="没有自研中转方案" />;
@@ -201,6 +236,9 @@ export default function SelfBuiltList({ journeys, date, stationNames, prices, lo
               prices={prices}
               loadingPrice={loadingPrice}
               onQueryPrice={onQueryPrice}
+              connections={connections}
+              loadingConnection={loadingConnection}
+              onQueryConnection={onQueryConnection}
             />
           ))}
           {(rest > 0 || open) && (

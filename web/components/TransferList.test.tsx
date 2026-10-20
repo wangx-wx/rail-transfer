@@ -41,6 +41,16 @@ function expandDetails(): void {
   screen.getAllByText('两程详情').forEach((summary) => fireEvent.click(summary));
 }
 
+/** 同城异站方案：南京南 → 南京（故意同名不同站，验证按钮出现且用两程各自站码） */
+function crossPlan(): TransferPlan {
+  const p = plan({ middleStation: '南京南-南京', sameStation: false });
+  p.legs = [
+    { ...p.legs[0]!, toStation: '南京南' },
+    { ...p.legs[1]!, fromStation: '南京', startTime: '10:30' },
+  ];
+  return p;
+}
+
 /** 价格相关 props 的默认值 */
 const priceProps = {
   date: '2026-10-07',
@@ -275,4 +285,27 @@ test('TransferList：二等座价格行高亮（方案B）', () => {
   const refRow = container.querySelector('.price-row--ref');
   expect(refRow?.querySelector('.price-name')?.textContent).toBe('二等座');
   expect(container.querySelectorAll('.price-row--ref')).toHaveLength(1);
+});
+
+// ── 接驳入口（D69：两条通路共用同一套展示）───────────────
+test('TransferList：同城异站换乘给出「查接驳」按钮（D69）', () => {
+  render(<TransferList groups={groups([crossPlan()])} {...priceProps} />);
+  expect(screen.getByRole('button', { name: /查接驳/ })).toBeTruthy();
+});
+
+test('TransferList：同站换乘不显示接驳区（D69）', () => {
+  render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  expect(screen.queryByRole('button', { name: /查接驳/ })).toBeNull();
+});
+
+test('TransferList：换乘站名无法反查站码 → 按钮禁用并提示（T62）', () => {
+  const p = crossPlan();
+  p.legs = [
+    { ...p.legs[0]!, toStation: '不存在的站' },
+    { ...p.legs[1]!, fromStation: '另一个不存在的站' },
+  ];
+  render(<TransferList groups={groups([p])} {...priceProps} />);
+  const btn = screen.getByRole('button', { name: /查接驳/ }) as HTMLButtonElement;
+  expect(btn.disabled).toBe(true);
+  expect(screen.getByText(/未识别换乘站/)).toBeTruthy();
 });

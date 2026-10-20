@@ -25,6 +25,9 @@ import HubPicker from './components/HubPicker.tsx';
 import type { ScoredJourney } from './lib/selfbuilt.ts';
 import { findShortTicket } from './lib/buyshort.ts';
 import type { BuyShortResult } from './lib/buyshort.ts';
+import { createConnectionApi, loadConnectionByCode } from './lib/connectionAdapter.ts';
+import { createCoordSource } from './lib/stationCoords.ts';
+import type { ConnectionCache, ConnectionResult } from './lib/connection.ts';
 import { parseLeftTicket, parsePrice, parseTransfer } from './lib/parse.ts';
 import { processPlans } from './lib/plans.ts';
 import { priceKey } from './lib/view.ts';
@@ -77,6 +80,16 @@ export default function App() {
   const ctxRef = useRef<QueryContext | null>(null);
   // 当前查询日期（传给列表用于查价）
   const [queryDate, setQueryDate] = useState('');
+
+  // 接驳（D70）：站对键 → 结果；正在查的键。结果缓存在内存，仅刷新时清空（T60）
+  const [connections, setConnections] = useState<Record<string, ConnectionResult>>({});
+  const [loadingConnection, setLoadingConnection] = useState<Set<string>>(new Set());
+  // 接驳编排缓存（存 Promise，并发去重 + 跨查询复用）；坐标表同样只加载一次
+  const connectionCacheRef = useRef<ConnectionCache>(new Map());
+  const coordSourceRef = useRef(createCoordSource(async () => {
+    const m = await import('./data/station-coords.ts');
+    return m.STATION_COORDS;
+  }));
 
   // 买短乘长：车次键 → 结果；正在查的车次键；进行中的进度（已查站数）
   const [buyShort, setBuyShort] = useState<Record<string, BuyShortResult>>({});
@@ -153,6 +166,40 @@ export default function App() {
       }
     },
     [buyShortLoading, queryDate],
+  );
+
+  /**
+   * 查一个换乘点的接驳（D70 手动懒加载）。
+   *
+   * 结果与 Promise 缓存都按「到达站码>出发站码」去重：同一张卡片里重复站对
+   * 只发一次；跨查询复用（接驳与乘车日期无关，T60）。
+   */
+  const fetchConnection = useCallback(
+    async (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => {
+      const ctx = ctxRef.current;
+      const key = `${fromCode}>${toCode}`;
+      if (!ctx || loadingConnection.has(key) || connections[key]) return;
+
+      setLoadingConnection((prev) => new Set(prev).add(key));
+      try {
+        const result = await loadConnectionByCode(
+          { fromCode, toCode, waitMinutes, departureTime },
+          {
+            coords: coordSourceRef.current,
+            api: createConnectionApi({ token: ctx.token, base: API_BASE }),
+            cache: connectionCacheRef.current,
+          },
+        );
+        setConnections((prev) => ({ ...prev, [key]: result }));
+      } finally {
+        setLoadingConnection((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [connections, loadingConnection],
   );
 
   /** 查直达 */
@@ -445,6 +492,9 @@ export default function App() {
               prices={prices}
               loadingPrice={loadingPrice}
               onQueryPrice={fetchPrice}
+              connections={connections}
+              loadingConnection={loadingConnection}
+              onQueryConnection={fetchConnection}
             />
           </>
         )}
@@ -455,6 +505,9 @@ export default function App() {
             prices={prices}
             loadingPrice={loadingPrice}
             onQueryPrice={fetchPrice}
+            connections={connections}
+            loadingConnection={loadingConnection}
+            onQueryConnection={fetchConnection}
           />
         )}
       </main>

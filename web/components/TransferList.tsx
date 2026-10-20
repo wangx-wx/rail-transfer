@@ -9,6 +9,9 @@ import { useEffect, useState } from 'react';
 import { Button, Card, Collapse, Empty, Space, Tag } from 'antd';
 
 import JourneyTimes from './JourneyTimes.tsx';
+import ConnectionPanel from './ConnectionPanel.tsx';
+import { stationCodeOf } from '../lib/connectionAdapter.ts';
+import type { ConnectionResult } from '../lib/connection.ts';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
 import {
   viaTags,
@@ -40,6 +43,55 @@ interface Props {
     date: string,
     seatTypes: string,
   ) => void;
+  /** 接驳结果（键 = `到达站码>出发站码`，D70） */
+  connections?: Record<string, ConnectionResult>;
+  /** 正在查接驳的键 */
+  loadingConnection?: Set<string>;
+  /** 触发查接驳 */
+  onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number, departureTime: string) => void;
+}
+
+/** 同城异站换乘的接驳入口（D69：官方通路与自研通路共用同一组件） */
+function ConnectionEntry({ plan: p, connections, loadingConnection, onQueryConnection }: {
+  plan: AnnotatedPlan;
+  connections?: Props['connections'];
+  loadingConnection?: Props['loadingConnection'];
+  onQueryConnection?: Props['onQueryConnection'];
+}) {
+  if (p.sameStation) return null;
+
+  const leg = p.legs[0];
+  const next = p.legs[1];
+  // T62：官方结果只有站名，需反查站码；失败则禁用并说明（不做城市级近似）
+  const fromCode = leg ? stationCodeOf(leg.toStation) : null;
+  const toCode = next ? stationCodeOf(next.fromStation) : null;
+
+  if (!fromCode || !toCode || !leg || !next) {
+    return (
+      <div className="connection-panel">
+        <span className="muted">
+          {leg?.toStation} → {next?.fromStation} · 未识别换乘站
+        </span>
+        <Button size="small" disabled>查接驳</Button>
+      </div>
+    );
+  }
+
+  const key = `${fromCode}>${toCode}`;
+  return (
+    <ConnectionPanel
+      point={{
+        fromName: leg.toStation,
+        toName: next.fromStation,
+        fromCode,
+        toCode,
+        waitMinutes: p.waitMinutes,
+      }}
+      result={connections?.[key] ?? null}
+      loading={loadingConnection?.has(key) ?? false}
+      onQuery={() => onQueryConnection?.(fromCode, toCode, p.waitMinutes, next.startTime)}
+    />
+  );
 }
 
 /** 方案标记类别 → antd Tag color */
@@ -112,9 +164,9 @@ function Leg({
 }
 
 /** 关键行程信息始终可见，两程完整信息原位展开。 */
-function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice }: {
+function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, connections, loadingConnection, onQueryConnection }: {
   plan: AnnotatedPlan; date: string;
-} & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
+} & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice' | 'connections' | 'loadingConnection' | 'onQueryConnection'>) {
   const flags = planFlags(p.flags);
   const legPrices = p.legs.map((leg) => {
     const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
@@ -144,6 +196,7 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice }: {
             })}
           </div>
           {flags.length > 0 && <Space size={4} wrap>{flags.map((flag) => <Tag className="wrapping-tag" key={flag.label} color={FLAG_COLOR[flag.kind]}>{flag.label}</Tag>)}</Space>}
+          <ConnectionEntry plan={p} connections={connections} loadingConnection={loadingConnection} onQueryConnection={onQueryConnection} />
         </div>
         <div className="ticket-actions">
           {total != null ? (
@@ -166,7 +219,7 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice }: {
   );
 }
 
-export default function TransferList({ groups, date, prices, loadingPrice, onQueryPrice }: Props) {
+export default function TransferList({ groups, date, prices, loadingPrice, onQueryPrice, connections, loadingConnection, onQueryConnection }: Props) {
   const hubGroups = groupByHub(groups);
   const allKeys = hubGroups.map(([hub]) => hub);
 
@@ -188,6 +241,9 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
       prices={prices}
       loadingPrice={loadingPrice}
       onQueryPrice={onQueryPrice}
+      connections={connections}
+      loadingConnection={loadingConnection}
+      onQueryConnection={onQueryConnection}
     />
   );
 
