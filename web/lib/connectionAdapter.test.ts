@@ -105,3 +105,25 @@ test('createConnectionApi：走 Worker 端点并带口令', async () => {
   expect(calls[0]).toContain('/api/transit');
   expect(calls[0]).toContain('from=39.8%2C116.3');
 });
+
+// ── Worker 层失败的口径（D74）────────────────────────────
+test('createConnectionApi：Worker 报「未配置」→ 不可重试，界面给原因而非重试按钮', async () => {
+  const fetchImpl = (async () =>
+    new Response(JSON.stringify({ ok: false, error: '接驳服务未配置（缺少 TENCENT_KEY）' }), {
+      status: 502,
+    })) as unknown as typeof globalThis.fetch;
+  const a = createConnectionApi({ base: 'https://proxy.example', fetchImpl });
+  const r = await loadConnectionByCode(REQ, { coords: COORDS, api: a, cache: new Map() });
+  expect(r.kind).toBe('ok');
+  if (r.kind !== 'ok') return;
+  expect(r.transit).toEqual({ kind: 'error', message: '接驳服务未配置（缺少 TENCENT_KEY）', retriable: false });
+});
+
+test('createConnectionApi：网络异常仍是可重试', async () => {
+  const fetchImpl = (async () => {
+    throw new TypeError('Failed to fetch');
+  }) as unknown as typeof globalThis.fetch;
+  const a = createConnectionApi({ base: 'https://proxy.example', fetchImpl });
+  const r = await loadConnectionByCode(REQ, { coords: COORDS, api: a, cache: new Map() });
+  expect(r.kind === 'ok' && r.transit.kind === 'error' && r.transit.retriable).toBe(true);
+});

@@ -467,7 +467,15 @@ export type ConnectionCache = Map<string, Promise<{ transit: TencentEnvelope<Ten
 
 /** 把一类方案的失败封装成统一的 `ModeOutcome` */
 function failure(e: TencentEnvelope<unknown> | Error): ModeOutcome<never> {
-  if (e instanceof Error) return { kind: 'error', message: '接驳查询失败', retriable: true };
+  if (e instanceof Error) {
+    // 带了明确「是否可重试」判定的错误（如 Worker 未配置 key）按其口径，别一律当网络故障
+    const retriable = (e as Error & { retriable?: boolean }).retriable;
+    return {
+      kind: 'error',
+      message: e.message || '接驳查询失败',
+      retriable: retriable ?? true,
+    };
+  }
   const s = classifyTencentStatus(e.status);
   if (s.kind === 'ok') return { kind: 'empty' };
   if (s.kind === 'noResult') return { kind: 'empty' };

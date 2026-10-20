@@ -185,3 +185,12 @@ test('ConnectionPanel：点击重试再次触发查询', () => {
   fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
   expect(onQuery).toHaveBeenCalledTimes(1);
 });
+
+test('ConnectionPanel：key 未配置 → 显示原因且不给重试（D74）', () => {
+  const r = okResult();
+  r.transit = { kind: 'error', message: '接驳服务未配置（缺少 TENCENT_KEY）', retriable: false };
+  r.driving = { kind: 'error', message: '接驳服务未配置（缺少 TENCENT_KEY）', retriable: false };
+  render(<ConnectionPanel point={POINT} result={r} loading={false} onQuery={noop} />);
+  expect(screen.getAllByText(/接驳服务未配置/).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: /重\s*试/ })).toBeNull();
+});

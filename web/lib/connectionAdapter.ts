@@ -18,6 +18,27 @@ interface ProxyResponse<T> {
   error?: string;
 }
 
+/**
+ * Worker 层失败 → 展示口径（D74）。
+ *
+ * key 未配置属于**配置问题**，重试一百次也一样，不能给重试按钮；
+ * 其余（上游网络失败、上游 HTTP 非 200）才允许重试。
+ */
+export function proxyFailure(error: string | undefined): { message: string; retriable: boolean } {
+  const msg = error ?? '接驳查询失败';
+  const config = msg.includes('未配置');
+  return { message: msg, retriable: !config };
+}
+
+/** Worker 层失败（带「是否值得重试」的判定，D74） */
+export class ProxyFailure extends Error {
+  readonly retriable: boolean;
+  constructor(info: { message: string; retriable: boolean }) {
+    super(info.message);
+    this.retriable = info.retriable;
+  }
+}
+
 /** 坐标 → 腾讯要求的 `lat,lng` 字符串（T57：纬度在前） */
 export function latLngParam(p: LatLng): string {
   return `${p.lat},${p.lng}`;
@@ -38,9 +59,7 @@ export function createConnectionApi(
     if (opts.token) headers['X-Access-Token'] = opts.token;
     const res = await fetchImpl(url.toString(), { headers });
     const body = (await res.json()) as ProxyResponse<TencentEnvelope<T>>;
-    // Worker 层的失败（未配置 key / 上游网络失败）用非 0 业务码表达，
-    // 让上层沿用同一套分类；`classifyTencentStatus` 会把它当不可重试错误。
-    if (!body.ok) throw new Error(body.error ?? '接驳查询失败');
+    if (!body.ok) throw new ProxyFailure(proxyFailure(body.error));
     return body.data ?? { status: -1 };
   };
 
