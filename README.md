@@ -82,7 +82,28 @@ npm run typecheck           # tsc --noEmit
 npm run dev                 # Vite 开发服务器（/api 代理到 Worker）
 npm run build               # 构建前端到 dist/
 node tools/gen-stations.mjs # 重新生成城市站表（纯静态，零网络）
+node tools/build-station-coords.mjs # 补齐站点坐标产物（可断点续跑，见下）
 ```
+
+### 接驳功能需要配置腾讯位置服务 key
+
+同城异站换乘的接驳方案（公交 / 打车）经 Worker 转发腾讯位置服务。key **只放 Worker 侧**：
+
+```bash
+cd worker
+npx wrangler secret put TENCENT_KEY   # 交互输入，不要写进 wrangler.toml 或前端
+```
+
+未配置时接驳区显示「接驳服务未配置」，其余功能不受影响。
+
+站点坐标是构建期产物（`web/data/station-coords.ts`，已入库）。需要重跑或续补时：
+
+```bash
+node tools/build-station-coords.mjs          # 续跑：只补缺失站
+node tools/build-station-coords.mjs --all    # 全量重跑
+```
+
+断点进度存在 `.cache/station-coords-progress.json`。
 
 开工前的接口复核脚本（历史资料）：
 

@@ -6,6 +6,10 @@
 # 口令（T15）：用 Worker 环境变量注入，不要写进本文件或代码
 #   npx wrangler secret put ACCESS_TOKEN
 # 未配置 ACCESS_TOKEN 时不校验口令（便于本地开发）。
+#
+# 腾讯位置服务 key（T58，接驳功能用）：同样走 secret，**绝不写进 [vars]**
+#   npx wrangler secret put TENCENT_KEY
+# 未配置时接驳端点返回「接驳服务未配置」，其余端点不受影响。
 
 name = "rail-transfer-proxy"
 main = "index.ts"
