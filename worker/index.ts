@@ -9,6 +9,8 @@
  *   GET /api/transfer     中转（扇出，hubs 逗号分隔）
  *   GET /api/stopover     经停站
  *   GET /api/price        票价
+ *   GET /api/transit      接驳公交（腾讯，T58）
+ *   GET /api/driving      接驳打车（腾讯，T58）
  *
  * 口令（T15）：读 `env.ACCESS_TOKEN`。**未配置时不做校验**，便于本地开发；
  * 生产部署时在 Worker 环境变量里设上即生效。
@@ -18,13 +20,19 @@
  */
 
 import { fetchLeftTicket, fetchTransferBatch, fetchStopover, fetchPrice } from './source.ts';
+import { fetchDriving, fetchTransit, isValidLatLng } from './tencent.ts';
 import type { FetchLike } from './source.ts';
 
 /** Worker 环境变量 */
 export interface Env {
   /** 访问口令；未设置则不校验（T15） */
   ACCESS_TOKEN?: string;
+  /** 腾讯位置服务 key（T58）；用 `wrangler secret put` 注入，不得写进 wrangler.toml */
+  TENCENT_KEY?: string;
 }
+
+/** 不走 Worker 缓存的端点（T58：接驳由前端内存缓存） */
+const NO_CACHE_PATHS = new Set(['/api/transit', '/api/driving']);
 
 /** 可注入依赖（测试用） */
 export interface HandlerDeps {
@@ -50,13 +58,40 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
 }
 
 /** 路由处理函数签名 */
-type RouteHandler = (q: URLSearchParams, deps: HandlerDeps) => Promise<{ ok?: boolean; [k: string]: unknown }>;
+type RouteHandler = (
+  q: URLSearchParams,
+  deps: HandlerDeps,
+  env: Env,
+) => Promise<{ ok?: boolean; [k: string]: unknown }>;
 
 /** 从查询参数取值，缺失时抛错（上游会返回空 data，不如早失败） */
 function req(q: URLSearchParams, key: string): string {
   const v = q.get(key);
   if (v === null) throw new Error(`缺少参数 ${key}`);
   return v;
+}
+
+/** 校验并取经纬度参数，格式不对抛错（上游会返回难懂的业务码，不如早失败） */
+function reqLatLng(q: URLSearchParams, key: string): string {
+  const v = q.get(key);
+  if (!isValidLatLng(v)) throw new Error(`参数 ${key} 需为「纬度,经度」`);
+  return v;
+}
+
+/** 接驳端点的公共流程：校验 key → 校验坐标 → 转发 */
+async function connectionRoute(
+  q: URLSearchParams,
+  env: Env,
+  deps: HandlerDeps,
+  fetchUpstream: (p: { from: string; to: string }, key: string, deps: HandlerDeps) => Promise<
+    { ok: true; data: unknown } | { ok: false; error: string }
+  >,
+): Promise<{ ok?: boolean; [k: string]: unknown }> {
+  const key = env.TENCENT_KEY;
+  if (!key) return { ok: false, error: '接驳服务未配置（缺少 TENCENT_KEY）' };
+  const params = { from: reqLatLng(q, 'from'), to: reqLatLng(q, 'to') };
+  const r = await fetchUpstream(params, key, deps);
+  return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error };
 }
 
 /** 路由表：路径 → 处理函数 */
@@ -77,6 +112,8 @@ const ROUTES: Record<string, RouteHandler> = {
     });
     return { ok: true, items };
   },
+  '/api/transit': (q, deps, env) => connectionRoute(q, env, deps, fetchTransit),
+  '/api/driving': (q, deps, env) => connectionRoute(q, env, deps, fetchDriving),
   '/api/stopover': (q, deps) =>
     fetchStopover({
       trainNo: req(q, 'train_no'),
@@ -118,7 +155,10 @@ export async function handleRequest(
 
   // 缓存（T9/T10）：以整段 URL 为键
   // Workers 运行时 caches.default 可用；Node 下无 caches，静默降级
-  const cache = deps.cache ?? (globalThis.caches as { default?: Cache } | undefined)?.default;
+  // 接驳端点不缓存（T58）：结果由前端内存缓存，且上游偶尔抖动的时长不该被冻住 5 分钟
+  const cache = NO_CACHE_PATHS.has(url.pathname)
+    ? undefined
+    : (deps.cache ?? (globalThis.caches as { default?: Cache } | undefined)?.default);
   const cacheKey = new Request(url.toString(), { method: 'GET' });
   if (cache) {
     try {
@@ -131,9 +171,12 @@ export async function handleRequest(
 
   let body: { ok?: boolean; [k: string]: unknown };
   try {
-    body = await handler(url.searchParams, deps);
+    body = await handler(url.searchParams, deps, env);
   } catch (e) {
-    return json({ ok: false, error: `内部错误: ${e}` }, 500);
+    // 参数类错误是我们自己抛的，属客户端问题 → 400；其余算内部错误
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/^参数 /.test(msg)) return json({ ok: false, error: msg }, 400);
+    return json({ ok: false, error: `内部错误: ${msg}` }, 500);
   }
 
   const res = json(body, body.ok === false ? 502 : 200);

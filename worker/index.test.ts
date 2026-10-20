@@ -185,3 +185,103 @@ test('失败响应不写缓存', async () => {
   await handleRequest(req('/api/left-ticket?from=VNP&to=AOH&date=2026-10-07'), {}, { fetchImpl: f, cache });
   expect(cache.store.size).toBe(0);
 });
+
+// ── /api/transit 与 /api/driving（T58）────────────────────
+const TEN = 'https://apis.map.qq.com';
+
+/** 腾讯风格的 fetch mock：按路径返回预设体，并记录 URL */
+function tencentFetch(body: Record<string, string> = {}, opts: { status?: number; throwOn?: string } = {}) {
+  const calls: string[] = [];
+  const fn = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    calls.push(url);
+    if (opts.throwOn && url.includes(opts.throwOn)) throw new Error(`网络炸了 ${url}`);
+    const path = new URL(url).pathname;
+    const payload = body[path] ?? '{"status":0,"result":{"routes":[]}}';
+    return fakeRes({ status: opts.status ?? 200, body: payload }) as unknown as Response;
+  }) as FetchLike & { calls: string[] };
+  fn.calls = calls;
+  return fn;
+}
+
+const transitReq = (q = '') =>
+  req(`/api/transit?from=39.865022,116.378999&to=39.894712,116.321193${q}`);
+
+test('/api/transit：key 未配置 → 明确报错，不发上游请求', async () => {
+  const f = tencentFetch();
+  const res = await handleRequest(transitReq(), {}, { fetchImpl: f });
+  const body = (await res.json()) as { ok: boolean; error: string };
+  expect(res.status).toBe(502);
+  expect(body.error).toMatch(/未配置/);
+  expect(f.calls).toEqual([]);
+});
+
+test('/api/transit：转发到腾讯公交接口，带上 key 与「分」为单位', async () => {
+  const f = tencentFetch();
+  await handleRequest(transitReq(), { TENCENT_KEY: 'k-123' }, { fetchImpl: f });
+  expect(f.calls).toHaveLength(1);
+  const u = new URL(f.calls[0]!);
+  expect(u.origin).toBe(TEN);
+  expect(u.pathname).toBe('/ws/direction/v1/transit/');
+  // 坐标顺序是 lat,lng（T57）
+  expect(u.searchParams.get('from')).toBe('39.865022,116.378999');
+  expect(u.searchParams.get('to')).toBe('39.894712,116.321193');
+  expect(u.searchParams.get('key')).toBe('k-123');
+  expect(u.searchParams.get('price_unit')).toBe('1');
+});
+
+test('/api/driving：转发到腾讯驾车接口', async () => {
+  const f = tencentFetch();
+  const res = await handleRequest(
+    req('/api/driving?from=39.8,116.3&to=39.9,116.4'),
+    { TENCENT_KEY: 'k-123' },
+    { fetchImpl: f },
+  );
+  expect(res.status).toBe(200);
+  expect(new URL(f.calls[0]!).pathname).toBe('/ws/direction/v1/driving/');
+});
+
+test.each(['/api/transit', '/api/driving'])('%s：缺 from/to 或格式错 → 400，不发上游', async (path) => {
+  const f = tencentFetch();
+  for (const q of ['', '?from=39.8,116.3', '?from=abc&to=39.9,116.4', '?from=91,116&to=39.9,116.4']) {
+    const res = await handleRequest(req(path + q), { TENCENT_KEY: 'k' }, { fetchImpl: f });
+    expect(res.status).toBe(400);
+  }
+  expect(f.calls).toEqual([]);
+});
+
+test('/api/transit：与既有端点同形，原样透传上游 JSON（薄管道，T1）', async () => {
+  const payload = '{"status":0,"result":{"routes":[{"distance":8056,"duration":30,"price":400}]}}';
+  const f = tencentFetch({ '/ws/direction/v1/transit/': payload });
+  const res = await handleRequest(transitReq(), { TENCENT_KEY: 'k' }, { fetchImpl: f });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    ok: boolean;
+    data: { status: number; result: { routes: Array<{ duration: number }> } };
+  };
+  expect(body.ok).toBe(true);
+  expect(body.data.status).toBe(0);
+  expect(body.data.result.routes[0]!.duration).toBe(30);
+});
+
+test('/api/transit：上游异常时错误信息脱敏，不回传含 key 的 URL', async () => {
+  const f = tencentFetch({}, { throwOn: '/ws/direction/v1/transit/' });
+  const res = await handleRequest(transitReq(), { TENCENT_KEY: 'SECRET-KEY-XYZ' }, { fetchImpl: f });
+  const text = await res.text();
+  expect(res.status).toBe(502);
+  expect(text).not.toContain('SECRET-KEY-XYZ');
+});
+
+test('/api/transit：不写 Worker 缓存（T58）', async () => {
+  const cache = fakeCache();
+  const f = tencentFetch();
+  await handleRequest(transitReq(), { TENCENT_KEY: 'k' }, { fetchImpl: f, cache });
+  expect(cache.store.size).toBe(0);
+});
+
+test('/api/transit：不改动既有 12306 端点的缓存行为', async () => {
+  const cache = fakeCache();
+  const f = okFetch();
+  await handleRequest(req('/api/left-ticket?from=VNP&to=AOH&date=2026-10-07'), {}, { fetchImpl: f, cache });
+  expect(cache.store.size).toBe(1);
+});
