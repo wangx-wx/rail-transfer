@@ -27,6 +27,7 @@
 ## 3. 开发流程
 
 - **TDD**：先写会失败的测试，再写实现让它通过。`web/` 的页面脚本、`worker/` 的代理脚本都属于需要测试的代码。
+- **测试位置**：全部测试放 `web/tests/`、`worker/tests/`，源码目录只留生产代码；共享样本放 `test/fixtures/`。文件扩展名决定运行环境——`.test.ts` 跑 Node/workerd，`.test.tsx` 跑 jsdom，不能混用。`vi.mock()` 路径按测试文件解析，移动测试时要一起改。
 - **小步提交**：每个小功能完成、且 `npm test` 与 `npm run typecheck` 通过后立即提交；提交格式 `type(scope): desc`，type 取 `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf`。
 - **代码规模**：除测试文件外，单个生产代码文件原则上不超过 **500** 行；确有必要时不得无故超过 **700** 行。
 - **环境约束**：不在系统层面安装东西（`brew install` 等），项目内的 npm 依赖正常使用。

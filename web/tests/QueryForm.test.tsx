@@ -1,0 +1,107 @@
+/**
+ * QueryForm 组件测试（jsdom）
+ *
+ * 覆盖：城市联想、起终点对调、未填必填项时不触发查询。
+ */
+
+import { test, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+import QueryForm from '../components/QueryForm.tsx';
+
+test('QueryForm：渲染城市、日期、口令与两个按钮', () => {
+  render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  expect(screen.getByText('出发城市')).toBeTruthy();
+  expect(screen.getByText('到达城市')).toBeTruthy();
+  expect(screen.getByText('日期')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '查直达' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '查中转' })).toBeTruthy();
+});
+
+test('QueryForm：无席别筛选框', () => {
+  render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  expect(screen.queryByText('席别')).toBeNull();
+});
+
+test('QueryForm：对调按钮交换出发与到达城市', async () => {
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  // AutoComplete 的 placeholder 不在 input 上，故用 id 定位
+  const from = container.querySelector<HTMLInputElement>('#from')!;
+  const to = container.querySelector<HTMLInputElement>('#to')!;
+  fireEvent.change(from, { target: { value: '北京' } });
+  fireEvent.change(to, { target: { value: '上海' } });
+
+  fireEvent.click(screen.getByRole('button', { name: '对调出发与到达城市' }));
+
+  await waitFor(() => {
+    expect(from.value).toBe('上海');
+    expect(to.value).toBe('北京');
+  });
+});
+
+test('QueryForm：未填城市时点查直达不触发查询', async () => {
+  const onDirect = vi.fn();
+  render(<QueryForm querying={false} onDirect={onDirect} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '查直达' }));
+  await waitFor(() => expect(screen.getByText('请输入出发城市')).toBeTruthy());
+  expect(onDirect).not.toHaveBeenCalled();
+});
+
+test('QueryForm：querying 时两个按钮进入 loading 态', () => {
+  render(<QueryForm querying onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  // antd 6 的 loading 按钮不设 disabled 属性，而是加 ant-btn-loading 类
+  const direct = screen.getByRole('button', { name: /查直达/ });
+  const transfer = screen.getByRole('button', { name: /查中转/ });
+  expect(direct.className).toContain('ant-btn-loading');
+  expect(transfer.className).toContain('ant-btn-loading');
+});
+
+test('QueryForm：口令默认隐藏，可切换显示并带上查询参数', async () => {
+  const onTransfer = vi.fn();
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} onSelfBuilt={vi.fn()} />);
+  const token = container.querySelector<HTMLInputElement>('#token')!;
+  expect(token.type).toBe('password');
+  const toggle = container.querySelector<HTMLElement>('.ant-input-password-icon')!;
+  fireEvent.click(toggle);
+  expect(token.type).toBe('text');
+  fireEvent.click(toggle);
+  expect(token.type).toBe('password');
+  fireEvent.change(token, { target: { value: 'sample-token' } });
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '北京' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '上海' } });
+  fireEvent.click(screen.getByRole('button', { name: '对调出发与到达城市' }));
+  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
+  await waitFor(() => expect(onTransfer).toHaveBeenCalledWith(expect.objectContaining({
+    from: expect.objectContaining({ code: 'SHH' }),
+    to: expect.objectContaining({ code: 'BJP' }),
+    token: 'sample-token',
+  })));
+});
+
+// ── D58 失效：不再有「最多换乘」选择器（D68 改由选中枢纽数决定）──
+test('QueryForm：不再有「最多换乘」选择器', () => {
+  render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={vi.fn()} />);
+  expect(screen.queryByText('最多换乘')).toBeNull();
+});
+
+test('QueryForm：查中转上报的上下文不含 maxTransfers', async () => {
+  const onTransfer = vi.fn();
+  const { container } = render(<QueryForm querying={false} onDirect={vi.fn()} onTransfer={onTransfer} onSelfBuilt={vi.fn()} />);
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
+  fireEvent.click(screen.getByRole('button', { name: '查中转' }));
+  await waitFor(() => expect(onTransfer).toHaveBeenCalled());
+  expect(onTransfer.mock.calls[0]![0]).not.toHaveProperty('maxTransfers');
+});
+
+test('QueryForm：点「自研中转」触发 onSelfBuilt', async () => {
+  const onSelfBuilt = vi.fn();
+  const { container } = render(
+    <QueryForm querying={false} onDirect={vi.fn()} onTransfer={vi.fn()} onSelfBuilt={onSelfBuilt} />,
+  );
+  expect(screen.getByRole('button', { name: '自研中转' })).toBeTruthy();
+  fireEvent.change(container.querySelector('#from')!, { target: { value: '广州' } });
+  fireEvent.change(container.querySelector('#to')!, { target: { value: '十堰' } });
+  fireEvent.click(screen.getByRole('button', { name: '自研中转' }));
+  await waitFor(() => expect(onSelfBuilt).toHaveBeenCalledWith(expect.objectContaining({ date: expect.any(String) })));
+});

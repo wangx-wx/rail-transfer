@@ -12,6 +12,7 @@ import { defineConfig } from 'vitest/config';
  *      定位 fixture，故不能用 jsdom（其 url 是 http，会让 fileURLToPath 失准）。
  *   3. web-dom —— jsdom 环境，React 组件渲染测试（`.test.tsx`）。
  *
+ * 测试统一放 `web/tests/`、`worker/tests/`，与源码目录分离。
  * 用文件扩展名区分 2 / 3：纯函数写 `.test.ts`，组件测试写 `.test.tsx`。
  */
 export default defineConfig({
@@ -21,13 +22,13 @@ export default defineConfig({
         plugins: [cloudflareTest({ main: './worker/index.ts' })],
         test: {
           name: 'worker',
-          include: ['worker/**/*.test.ts'],
+          include: ['worker/tests/**/*.test.ts'],
         },
       },
       {
         test: {
           name: 'web-node',
-          include: ['web/**/*.test.ts'],
+          include: ['web/tests/**/*.test.ts'],
           environment: 'node',
         },
       },
@@ -35,7 +36,7 @@ export default defineConfig({
         plugins: [react()],
         test: {
           name: 'web-dom',
-          include: ['web/**/*.test.tsx'],
+          include: ['web/tests/**/*.test.tsx'],
           environment: 'jsdom',
           setupFiles: ['./web/test/setup.ts'],
           server: {
