@@ -109,6 +109,20 @@ export function parseLeftTicket(
 }
 
 /**
+ * 席别字段归一（D77）：`'--'` 与空串表示「该车无此席别」，丢弃；
+ * `'无'` / `'有'` / 数字**保留**——它们是真实余票状态（`'无'` = 有该席别但卖完）。
+ */
+function compactSeats(raw: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [code, value] of Object.entries(raw)) {
+    const v = (value ?? '').trim();
+    if (!v || v === '--') continue;
+    out[code] = v;
+  }
+  return out;
+}
+
+/**
  * 解析一程（fullList 项）的展示信息。
  */
 export function parseTransferLeg(leg: RawFullListItem): TransferLeg {
@@ -125,12 +139,18 @@ export function parseTransferLeg(leg: RawFullListItem): TransferLeg {
     fromStationNo: leg.from_station_no,
     toStationNo: leg.to_station_no,
     seatTypes: leg.seat_types,
-    seats: {
-      ZE: leg.ze_num ?? '',
-      ZY: leg.zy_num ?? '',
-      SWZ: leg.swz_num ?? '',
-      WZ: leg.wz_num ?? '',
-    },
+    // D77：8 个常见席别。`'--'` = 该车无此席别，归一为 undefined 而非空串，
+    // 以便渲染层区分「这趟车没有这个席别」与「有该席别但无票（'无'）」。
+    seats: compactSeats({
+      ZE: leg.ze_num,
+      ZY: leg.zy_num,
+      SWZ: leg.swz_num,
+      WZ: leg.wz_num,
+      RW: leg.rw_num,
+      YW: leg.yw_num,
+      YZ: leg.yz_num,
+      GR: leg.gr_num,
+    }),
   };
 }
 

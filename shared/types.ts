@@ -235,6 +235,14 @@ export interface RawFullListItem {
   zy_num?: string;
   swz_num?: string;
   wz_num?: string;
+  /** 软卧（D77） */
+  rw_num?: string;
+  /** 硬卧（D77） */
+  yw_num?: string;
+  /** 硬座（D77） */
+  yz_num?: string;
+  /** 高级软卧（D77） */
+  gr_num?: string;
 }
 
 // ── Worker 与前端之间的接口 ──────────────────────────────

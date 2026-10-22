@@ -159,6 +159,34 @@ test('parseTransfer：空 data → 空方案', () => {
   expect(middleStationList).toEqual([]);
 });
 
+// ── D77 席别补全：普速车的卧铺与硬座不能被丢 ─────────────
+test('parseTransferLeg：普速车的软卧/硬卧/硬座要解析出来（D77）', () => {
+  const raw = fixture<TransferFixture>('transfer-slow-train.json');
+  // 真实样本：北京→西安，T55 的 rw_num=1 / yw_num=14 / yz_num=有
+  const item = raw.data.middleList.find((x) =>
+    (x.fullList ?? []).some((l) => l.station_train_code === 'T55'),
+  );
+  expect(item, '夹具里应有 T55 的中转方案').toBeTruthy();
+
+  const leg = parseTransferItem(item!).legs.find((l) => l.trainCode === 'T55')!;
+  expect(leg.seats.RW).toBe('1');   // 软卧
+  expect(leg.seats.YW).toBe('14');  // 硬卧
+  expect(leg.seats.YZ).toBe('有');  // 硬座
+});
+
+test('parseTransferLeg：席别字段缺失时为 undefined，不伪造成空串（D77）', () => {
+  const raw = fixture<TransferFixture>('transfer-slow-train.json');
+  const item = raw.data.middleList.find((x) =>
+    (x.fullList ?? []).some((l) => l.station_train_code === 'T55'),
+  )!;
+  const leg = parseTransferItem(item).legs.find((l) => l.trainCode === 'T55')!;
+
+  // T55 是普速车，没有二等座/一等座/商务座
+  expect(leg.seats.ZE).toBeUndefined();
+  expect(leg.seats.ZY).toBeUndefined();
+  expect(leg.seats.SWZ).toBeUndefined();
+});
+
 test('extractHubCodes：从 "码#站名" 抽码并去重', () => {
   expect(extractHubCodes(['BME#白马北', 'CNW#成都南', 'BME#白马北'])).toEqual(['BME', 'CNW']);
   expect(extractHubCodes([])).toEqual([]);
