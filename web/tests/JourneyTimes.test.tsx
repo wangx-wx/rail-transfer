@@ -35,3 +35,58 @@ test('跨天：接受分钟数入参也能算对（D79）', () => {
   render(<JourneyTimes fromStation="广州" toStation="拉萨" startTime="20:00" arriveTime="22:00" durationMinutes={50 * 60} />);
   expect(screen.getByLabelText('跨2天').textContent).toBe('+2');
 });
+
+// ── D79：一条腿一行——车次压在轨道线上，历时在线下方 ──────
+test('车次属于同一行程段，与发到时刻、站名同组（D79）', () => {
+  render(
+    <JourneyTimes
+      trainCode="G547"
+      fromStation="北京南"
+      toStation="上海虹桥"
+      startTime="06:18"
+      arriveTime="12:11"
+      duration="05:53"
+    />,
+  );
+  const leg = screen.getByRole('group', { name: '行程时间' });
+  expect(within(leg).getByText('G547')).toBeTruthy();
+  expect(within(leg).getByText('06:18')).toBeTruthy();
+  expect(within(leg).getByText('12:11')).toBeTruthy();
+  expect(within(leg).getByText('北京南')).toBeTruthy();
+  expect(within(leg).getByText('上海虹桥')).toBeTruthy();
+  expect(within(leg).getByLabelText('历时').textContent).toBe('05:53');
+});
+
+test('车次压在轨道线上，与历时同处中列（D79）', () => {
+  const { container } = render(
+    <JourneyTimes trainCode="G547" fromStation="北京南" toStation="上海虹桥" startTime="06:18" arriveTime="12:11" duration="05:53" />,
+  );
+  const track = container.querySelector('.leg__trk');
+  expect(track?.textContent).toContain('G547');
+  expect(track?.textContent).toContain('05:53');
+});
+
+// ── D79：一程一行后，跨天要按「整条行程」累计，不能只看本程 ──
+// 反例：北京 20:00 发 → 武汉 06:00 到（+1），武汉 07:00 发 → 广州 14:00 到。
+// 第二程自身只跨 0 天，但它落在行程的第二天，必须仍标 +1。
+test('第二程的跨天标识按整条行程累计（D79）', () => {
+  render(
+    <JourneyTimes
+      trainCode="G2"
+      fromStation="武汉"
+      toStation="广州"
+      startTime="07:00"
+      arriveTime="14:00"
+      duration="07:00"
+      dayOffset={1}
+    />,
+  );
+  expect(screen.getByLabelText('跨1天').textContent).toBe('+1');
+});
+
+test('显式 dayOffset 覆盖按本程历时算出的值（D79）', () => {
+  render(
+    <JourneyTimes fromStation="武汉" toStation="广州" startTime="07:00" arriveTime="14:00" duration="07:00" dayOffset={0} />,
+  );
+  expect(screen.queryByLabelText(/跨\d+天/)).toBeNull();
+});

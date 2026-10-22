@@ -7,7 +7,7 @@
  * 买短乘长（D45~D53）：无票车卡片内联「查买短乘长」，手动点、就地显示结果。
  */
 
-import { Button, Card, Empty, Tag, Typography } from 'antd';
+import { Button, Empty, Typography } from 'antd';
 
 import { nameOf, viaTags, seatLabel, seatPrices, priceKey } from '../lib/view.ts';
 import JourneyTimes from './JourneyTimes.tsx';
@@ -110,7 +110,7 @@ export default function TrainList({
   if (!trains.length) return <Empty description="没有直达车次" />;
 
   return (
-    <div className="train-list">
+    <div className="train-list sheet">
       {trains.map((t) => {
         const from = nameOf(t.fromStation, stationMap);
         const to = nameOf(t.toStation, stationMap);
@@ -128,16 +128,17 @@ export default function TrainList({
         const bsKey = t.trainNo;
 
         return (
-          <Card key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
-            <div className="ticket-main">
-              <div className="train-identity"><strong>{t.trainCode}</strong><span>直达列车</span></div>
-              <JourneyTimes fromStation={from} toStation={to} startTime={t.startTime} arriveTime={t.arriveTime} duration={t.duration} />
-              <div className="seat-list">
+          <div key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} className="direct">
+            <JourneyTimes trainCode={t.trainCode} fromStation={from} toStation={to} startTime={t.startTime} arriveTime={t.arriveTime} duration={t.duration} />
+            <div className="direct__foot">
+              <div className="direct__seats">
                 {seats.length ? seats.map((x) => (
                   <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
-                )) : <span className="seat-label seat-off">无票</span>}
+                )) : <span className="seat-label seat-off">暂无余票信息</span>}
+                {/* 始发/终到与上下车不同时标注（D9） */}
+                {via.length > 0 && <span className="muted">{via.join(' · ')}</span>}
               </div>
-              <div className="ticket-actions">
+              <div className="direct__act">
                 {priceItems.length ? priceItems.map((p) => (
                   <span className="price-item" key={p.code}>{p.name} {p.label}</span>
                 )) : (
@@ -153,7 +154,6 @@ export default function TrainList({
                 )}
               </div>
             </div>
-            {via.length > 0 && <Tag className="wrapping-tag ticket-note">{via.join(' · ')}</Tag>}
 
             {soldOut && (
               <BuyShortResultArea
@@ -163,7 +163,7 @@ export default function TrainList({
                 progress={buyShortProgress[bsKey]}
               />
             )}
-          </Card>
+          </div>
         );
       })}
     </div>

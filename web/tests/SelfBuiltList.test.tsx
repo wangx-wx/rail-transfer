@@ -54,6 +54,74 @@ test('SelfBuiltList：渲染换乘分组标题与车次', () => {
   expect(screen.getAllByText(/G2202/).length).toBeGreaterThan(0);
 });
 
+// ── D79：N 程各成一行，N−1 个换乘断点在中间 ────────────────
+test('SelfBuiltList：三程各占一行，两个换乘断点在中间（D79）', () => {
+  const three = journey({
+    transfersCount: 2,
+    transfers: [
+      { station: 'WHN', toStation: 'WHN', waitMinutes: 20, sameStation: true },
+      { station: 'ZAF', toStation: 'ZAF', waitMinutes: 25, sameStation: true },
+    ],
+    legs: [
+      leg('G1101', 'GZQ', 'WHN', '08:00', '11:00', '03:00'),
+      leg('G2202', 'WHN', 'ZAF', '11:20', '13:00', '01:40'),
+      leg('G3303', 'ZAF', 'SNN', '13:25', '15:30', '02:05'),
+    ],
+  });
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[three]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const body = container.querySelector('.plan')!;
+  expect(body.querySelectorAll(':scope > .leg')).toHaveLength(3);
+  expect(body.querySelectorAll(':scope > .node')).toHaveLength(2);
+});
+
+test('SelfBuiltList：换乘断点标出等待时长与站对（D79）', () => {
+  const cross = journey({
+    transfers: [{ station: 'WHN', toStation: 'WCN', waitMinutes: 70, sameStation: false }],
+  });
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[cross]}
+      date="2026-10-08"
+      stationNames={{ WHN: '武汉', WCN: '武昌' }}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const node = container.querySelector('.node')!;
+  expect(node.textContent).toContain('换乘 1时10分');
+  expect(node.textContent).toContain('武汉 → 武昌');
+  expect(node.textContent).toContain('同城异站');
+});
+
+test('SelfBuiltList：所有行程在同一块结果面内（D79）', () => {
+  const { container } = render(
+    <SelfBuiltList
+      journeys={manyJourneys(2)}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(container.querySelectorAll('.sheet').length).toBeGreaterThan(0);
+  expect(container.querySelectorAll('.ticket-card')).toHaveLength(0);
+  // 行程必须是面的直接子级，否则 `.plan:first-child` 失效、行间细线全丢
+  const plans = [...container.querySelectorAll('.plan')];
+  expect(plans.length).toBeGreaterThanOrEqual(2);
+  for (const p of plans) expect(p.parentElement?.className).toBe('sheet');
+});
+
 test('SelfBuiltList：两次换乘分行展示', () => {
   const three = journey({
     transfersCount: 2,
@@ -106,7 +174,7 @@ test('SelfBuiltList：每程余票都要显示（D77）', () => {
     { code: 'ZE', name: '二等座', available: false, count: null, raw: '无' },
     { code: 'YW', name: '硬卧', available: true, count: 14, raw: '14' },
   ] };
-  render(
+  const { container } = render(
     <SelfBuiltList
       journeys={[j]}
       date="2026-10-08"
@@ -116,11 +184,13 @@ test('SelfBuiltList：每程余票都要显示（D77）', () => {
       onQueryPrice={noop}
     />,
   );
-  expect(screen.getByText('第1程 二等座 12 张')).toBeTruthy();
-  expect(screen.getByText('第1程 一等座 有')).toBeTruthy();
-  expect(screen.getByText('第1程 商务座 无')).toBeTruthy();
-  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
-  expect(screen.getByText('第2程 硬卧 14 张')).toBeTruthy();
+  // D79：第 N 程是行首标签，席别在该行内——断言整行文本。
+  // D77：卡片层用短名（二等 / 一等 / 商务 / 硬卧），展开详情才用全名。
+  const rows = [...container.querySelectorAll('.seatrow')].map((r) => r.textContent?.replace(/\s+/g, ' ').trim());
+  expect(rows[0]).toContain('第1程');
+  for (const s of ['二等 12 张', '一等 有', '商务 无']) expect(rows[0]).toContain(s);
+  expect(rows[1]).toContain('第2程');
+  for (const s of ['二等 无', '硬卧 14 张']) expect(rows[1]).toContain(s);
 });
 
 test('SelfBuiltList：空结果给出提示', () => {
@@ -275,7 +345,8 @@ test('SelfBuiltList：同城异站换乘给出「查接驳」按钮与「到达�
     />,
   );
   expect(screen.getByRole('button', { name: /查接驳/ })).toBeTruthy();
-  expect(screen.getByText(/武汉\s*→\s*武昌/)).toBeTruthy();
+  // D79：换乘断点与接驳面板都会出现这对站名，故用 getAllByText
+  expect(screen.getAllByText(/武汉\s*→\s*武昌/).length).toBeGreaterThan(0);
 });
 
 test('SelfBuiltList：同站换乘仍不显示接驳区', () => {

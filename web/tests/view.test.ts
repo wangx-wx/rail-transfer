@@ -170,7 +170,7 @@ test('durationLabel：非法输入 → 空串', () => {
 });
 
 // ── 跨天天数（T44 展示口径）────────────────────────────────
-import { dayOffset } from '../lib/view.ts';
+import { dayOffset, dayOffsetAt } from '../lib/view.ts';
 
 test('dayOffset：同日到达 → 0', () => {
   expect(dayOffset('08:00', '12:30', '04:30')).toBe(0);
@@ -198,4 +198,22 @@ test('dayOffset：缺历时 → 回退「到达 < 发车」', () => {
 test('dayOffset：时刻非法 → 0', () => {
   expect(dayOffset('----', '07:31', '12:21')).toBe(0); // 发车非法→无法反推
   expect(dayOffset('', '', '')).toBe(0);
+});
+
+// ── D79：一程一行后，每程的跨天要按整条行程累计 ──────────────
+// 反例：20:00 发 → 次日 06:00 到（+1），07:00 再发 → 14:00 到。
+// 第二程自身跨 0 天，但它落在行程的第二天，必须仍标 +1。
+test('dayOffsetAt：按行程内累计分钟数算每程的跨天', () => {
+  // 第一程：20:00 起，历时 10 小时 → 落在第 2 天（600 分）
+  expect(dayOffsetAt('20:00', 600)).toBe(1);
+  // 第二程：20:00 起 11 小时后（07:00 是第 2 天），历时 7 小时 → 仍在第 2 天
+  expect(dayOffsetAt('20:00', 11 * 60 + 7 * 60)).toBe(1);
+  // 20:00 出发 30 小时后 = 第 3 天 02:00
+  expect(dayOffsetAt('20:00', 30 * 60)).toBe(2);
+  // 超过 48 小时 → 第 3 天
+  expect(dayOffsetAt('20:00', 50 * 60)).toBe(2);
+});
+
+test('dayOffsetAt：发车时刻非法 → 0', () => {
+  expect(dayOffsetAt('----', 600)).toBe(0);
 });

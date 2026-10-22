@@ -23,6 +23,23 @@ export const LEG_SEAT_NAMES: Record<string, string> = {
   GR: '高级软卧',
 };
 
+/**
+ * 卡片摘要层用的**短名**（D77）。
+ *
+ * 每程一行要横向排 8 个席别，全名会把一行撑到折行；短名让同一程的席别
+ * 在一行内比完。展开详情里仍用全名，避免「高软」这类简称产生歧义。
+ */
+export const LEG_SEAT_SHORT: Record<string, string> = {
+  ZE: '二等',
+  ZY: '一等',
+  SWZ: '商务',
+  WZ: '无座',
+  RW: '软卧',
+  YW: '硬卧',
+  YZ: '硬座',
+  GR: '高软',
+};
+
 /** 站名：优先用映射表，回退站码 */
 export function nameOf(code: string, map?: Record<string, string>): string {
   return map?.[code] ?? code ?? '';
@@ -146,6 +163,23 @@ export function dayOffset(startTime: string | undefined, arriveTime: string | un
   const a = clockMinutes(arriveTime);
   if (s != null && a != null && a < s) return 1;
   return 0;
+}
+
+/**
+ * 按**行程内累计分钟数**算某一点落在第几天（D79）。
+ *
+ * 一程一行之后，每程各自标跨天会漏判：北京 20:00 发、次日 06:00 到武汉，
+ * 再 07:00 发、14:00 到广州——第二程自身只跨 0 天，但它明明在第二天。
+ * 故调用方传入「发车时刻 + 从行程开始到该程到达的累计分钟数」，
+ * 这里只做 `floor((当日发车分钟 + 累计) / 1440)`。
+ *
+ * `startTime` 是**整个行程**的发车时刻（不是本程的），`elapsedMinutes` 是
+ * 从行程开始到**本程到达**的累计分钟数。
+ */
+export function dayOffsetAt(startTime: string | undefined, elapsedMinutes: number): number {
+  const s = clockMinutes(startTime);
+  if (s == null || !Number.isFinite(elapsedMinutes) || elapsedMinutes < 0) return 0;
+  return Math.floor((s + elapsedMinutes) / 1440);
 }
 
 /**

@@ -5,8 +5,8 @@
  * 分组逻辑来自 view.groupByHub（纯函数，已单测）。
  */
 
-import { useEffect, useState } from 'react';
-import { Button, Card, Collapse, Empty, Space, Tag } from 'antd';
+import { Fragment, useEffect, useState } from 'react';
+import { Button, Collapse, Empty, Space } from 'antd';
 
 import JourneyTimes from './JourneyTimes.tsx';
 import ConnectionPanel from './ConnectionPanel.tsx';
@@ -19,10 +19,12 @@ import {
   planFlags,
   groupByHub,
   LEG_SEAT_NAMES,
+  LEG_SEAT_SHORT,
   seatPrices,
   priceKey,
   priceLabel,
   durationLabel,
+  dayOffsetAt,
 } from '../lib/view.ts';
 import type { FlagKind } from '../lib/view.ts';
 import type { AnnotatedPlan, PlanGroup, TransferLeg } from '../../shared/types.ts';
@@ -72,7 +74,7 @@ function ConnectionEntry({ plan: p, connections, loadingConnection, onQueryConne
         <span className="muted">
           {leg?.toStation} → {next?.fromStation} · 未识别换乘站
         </span>
-        <Button size="small" disabled>查接驳</Button>
+        <Button type="link" size="small" className="link-btn" disabled>查接驳</Button>
       </div>
     );
   }
@@ -90,19 +92,53 @@ function ConnectionEntry({ plan: p, connections, loadingConnection, onQueryConne
       result={connections?.[key] ?? null}
       loading={loadingConnection?.has(key) ?? false}
       onQuery={() => onQueryConnection?.(fromCode, toCode, p.waitMinutes)}
+      // 换乘断点已报站对，面板不再重复
+      showPair={false}
     />
   );
 }
 
-/** 方案标记类别 → antd Tag color */
-const FLAG_COLOR: Record<FlagKind, string> = {
-  bad: 'error',
-  risky: 'warning',
-  long: 'default',
-  ok: 'success',
+/**
+ * 每程到达时刻的跨天天数（D79）。
+ *
+ * 一程一行后，每程的跨天标识要按**整条行程**累计——只按本程历时算，会把
+ * 「次日 07:00 发、14:00 到」这种明明在第二天的程漏标成当日。
+ *
+ * 累计口径 = 前面各程的历时 + 各段换乘等待 + 本程历时。**最后一程以总耗时为
+ * 准**：`totalMinutes` 是「从发车到最终到达」的权威值，逐程相加在个别数据
+ * 上（历时缺失、等待未计）会与它对不上，最终到达时刻不该被算错。
+ */
+function legDayOffsets(
+  journeyStart: string,
+  legs: TransferLeg[],
+  waits: number[],
+  totalMinutes: number,
+): number[] {
+  let cum = 0;
+  return legs.map((leg, i) => {
+    cum += waits[i] ?? 0;
+    cum += legMinutes(leg);
+    const elapsed = i === legs.length - 1 ? totalMinutes : cum;
+    return dayOffsetAt(journeyStart, elapsed);
+  });
+}
+
+/** `HH:MM` 形式的历时 → 分钟；非法按 0 处理（缺历时算不出跨天，交给回退） */
+function legMinutes(leg: TransferLeg): number {
+  const m = /^(\d{1,3}):(\d{2})$/.exec((leg.duration ?? '').trim());
+  if (!m || Number(m[2]) > 59) return 0;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 方案标记类别 → 换乘断点上的标记样式（D79：颜色只作信号） */
+const FLAG_CLASS: Record<FlagKind, string> = {
+  bad: 'is-stop',
+  risky: '',
+  long: '',
+  ok: '',
 };
 
-/** 一程（中转的一段） */
+/** 一程（展开后的详情行）：车次、始发终到、各席别价格 */
 function Leg({
   leg,
   no,
@@ -116,10 +152,6 @@ function Leg({
   date: string;
 } & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice'>) {
   const via = viaTags(leg.startStation, leg.endStation, leg.fromStation, leg.toStation);
-  const seats = Object.entries(leg.seats)
-    .map(([code, raw]) => ({ label: seatLabel(LEG_SEAT_NAMES[code] ?? code, raw), key: code }))
-    .filter((x) => x.label);
-
   const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
   const priceMap = key ? prices[key] : undefined;
   const priceItems = seatPrices(priceMap);
@@ -130,17 +162,21 @@ function Leg({
       <div className="leg-content">
         <div className="leg-heading">
           <strong>{leg.trainCode}</strong>
-          {via.length > 0 && <Tag className="wrapping-tag">{via.join(' · ')}</Tag>}
+          {via.length > 0 && <span className="via">{via.join(' · ')}</span>}
         </div>
         <JourneyTimes fromStation={leg.fromStation} toStation={leg.toStation} startTime={leg.startTime} arriveTime={leg.arriveTime} duration={leg.duration} />
-        <div className="leg-tools">
-          <div className="seat-list">{seats.map((x) => (
-            <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
-          ))}</div>
+        {/* D77：卡片用短名（8 个席别挤一行），这里用全名——「高软」这类
+            简称在详情里要能查回全称 */}
+        <div className="seat-list">
+          {Object.entries(leg.seats)
+            .map(([code, raw]) => seatLabel(LEG_SEAT_NAMES[code] ?? code, raw))
+            .filter((x) => x != null)
+            .map((label, i) => (
+              <span key={i} className={`seat-label seat-${label!.state}`}>{label!.text}</span>
+            ))}
         </div>
         {priceItems.length ? (
           <div className="leg-price">
-            <div className="leg-price-head">{leg.trainCode} · {leg.fromStation} → {leg.toStation}</div>
             <div className="price-list" aria-label="各席别价格">
               {priceItems.map((p) => (
                 <div className={`price-row${p.code === REFERENCE_SEAT_CODE ? ' price-row--ref' : ''}`} key={p.code}>
@@ -163,52 +199,58 @@ function Leg({
   );
 }
 
+/**
+ * 换乘断点（D79）：独立成行、横跨整宽。
+ *
+ * 等待时长按风险着色（充裕绿 / 紧张琥珀 / 来不及红），后接站对与同站标签。
+ * 左侧竖线标记而**不用贯穿虚线**——虚线会被文字割碎，反而看不出连续性。
+ */
+function TransferNode({ plan: p, connections, loadingConnection, onQueryConnection }: {
+  plan: AnnotatedPlan;
+} & Pick<Props, 'connections' | 'loadingConnection' | 'onQueryConnection'>) {
+  const flags = planFlags(p.flags);
+  // 低于换乘下限 = 物理上来不及，用错误色；换乘紧张 = 琥珀；其余灰
+  const waitClass = p.flags.belowMin ? 'is-stop' : p.flags.risky ? 'is-hold' : 'is-ok';
+
+  return (
+    <div className="node">
+      <span className={`node__wait ${waitClass}`}>换乘 {durationLabel(p.waitMinutes)}</span>
+      <span className="node__pair">
+        {p.sameStation ? p.middleStation : `${p.legs[0]?.toStation} → ${p.legs[1]?.fromStation}`}
+      </span>
+      <span className="node__kind">{p.sameStation ? '同站' : '同城异站'}</span>
+      {flags.map((f) => (
+        <span key={f.label} className={`node__flag${FLAG_CLASS[f.kind] ? ` ${FLAG_CLASS[f.kind]}` : ''}`}>{f.label}</span>
+      ))}
+      <ConnectionEntry plan={p} connections={connections} loadingConnection={loadingConnection} onQueryConnection={onQueryConnection} />
+    </div>
+  );
+}
+
 /** 关键行程信息始终可见，两程完整信息原位展开。 */
 function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, connections, loadingConnection, onQueryConnection }: {
   plan: AnnotatedPlan; date: string;
 } & Pick<Props, 'prices' | 'loadingPrice' | 'onQueryPrice' | 'connections' | 'loadingConnection' | 'onQueryConnection'>) {
-  const flags = planFlags(p.flags);
   const legPrices = p.legs.map((leg) => {
     const key = priceKey(leg.trainNo, leg.fromStationNo, leg.toStationNo);
     return key ? prices[key]?.[REFERENCE_SEAT_CODE] : undefined;
   });
   const total = legPrices.length > 0 && legPrices.every((x) => x != null)
     ? legPrices.reduce((a, b) => a! + b!, 0) : null;
+  // 官方中转只有一次换乘，等待时长只有一个
+  const dayOffsets = legDayOffsets(p.startTime, p.legs, [0, p.waitMinutes], p.totalMinutes);
 
   return (
-    <Card className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
-      <div className="ticket-caption">
-        <span>{p.fromStation} → {p.endStation}</span>
-        <span>总耗时 {durationLabel(p.totalMinutes)}</span>
-      </div>
-      <div className="ticket-main">
-        <div className="train-identity"><strong>{p.firstTrainCode} → {p.secondTrainCode}</strong><span>{p.sameTrain ? '同车接续' : '换乘一次'}</span></div>
-        <JourneyTimes fromStation={p.fromStation} toStation={p.endStation} startTime={p.startTime} arriveTime={p.arriveTime} durationMinutes={p.totalMinutes} />
-        <div className="transfer-facts">
-          <div className="transfer-wait">换乘 {p.middleStation}　等待 {durationLabel(p.waitMinutes)}</div>
-          <span className="muted">{p.sameStation ? '同站' : '同城异站'}</span>
-          <div className="seat-list">
-            {p.legs.map((leg, index) => {
-              // D77：每个席别都渲染——「无」本身是信息，不能因为无票就隐藏。
-              // `'--'` 已在解析层归一为 undefined，这里只需过滤空值。
-              const labels = Object.entries(leg.seats)
-                .map(([code, raw]) => seatLabel(LEG_SEAT_NAMES[code] ?? code, raw))
-                .filter((x) => x != null);
-              return labels.length ? (
-                labels.map((label, i) => (
-                  <span key={`${index}-${i}`} className={`seat-label seat-${label!.state}`}>
-                    第{index + 1}程 {label!.text}
-                  </span>
-                ))
-              ) : (
-                <span key={index} className="seat-label seat-off">第{index + 1}程 暂无余票信息</span>
-              );
-            })}
-          </div>
-          {flags.length > 0 && <Space size={4} wrap>{flags.map((flag) => <Tag className="wrapping-tag" key={flag.label} color={FLAG_COLOR[flag.kind]}>{flag.label}</Tag>)}</Space>}
-          <ConnectionEntry plan={p} connections={connections} loadingConnection={loadingConnection} onQueryConnection={onQueryConnection} />
+    <div className="plan">
+      <div className="plan__top">
+        <div className="plan__head">
+          <div className="plan__route">{p.fromStation} → {p.endStation}</div>
+          {/* 车次链：一程一行后车次已压在各段轨道线上，这里保留一句概览，
+              让「G1 → G2」这种整体形状仍能一眼扫到 */}
+          <div className="plan__codes">{p.legs.map((l) => l.trainCode).join(' → ')}</div>
         </div>
-        <div className="ticket-actions">
+        <div className="plan__sum">
+          <span>总 {durationLabel(p.totalMinutes)}</span>
           {total != null ? (
             <span className="ref-price">
               <strong className="total-price">二等座参考价 {priceLabel(total)}</strong>
@@ -219,13 +261,52 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, conne
           )}
         </div>
       </div>
+
+      {p.legs.map((leg, i) => (
+        <Fragment key={`${leg.trainCode}-${i}`}>
+          <JourneyTimes
+            trainCode={leg.trainCode}
+            fromStation={leg.fromStation}
+            toStation={leg.toStation}
+            startTime={leg.startTime}
+            arriveTime={leg.arriveTime}
+            duration={leg.duration}
+            dayOffset={dayOffsets[i]}
+          />
+          {i < p.legs.length - 1 && (
+            <TransferNode plan={p} connections={connections} loadingConnection={loadingConnection} onQueryConnection={onQueryConnection} />
+          )}
+        </Fragment>
+      ))}
+
+      <div className="seats">
+        {p.legs.map((leg, index) => {
+          // D77：每个席别都渲染——「无」本身是信息，不能因为无票就隐藏。
+          // `'--'` 已在解析层归一为 undefined，这里只需过滤空值。
+          // 卡片用短名（8 个席别挤一行），展开详情用全名。
+          const labels = Object.entries(leg.seats)
+            .map(([code, raw]) => seatLabel(LEG_SEAT_SHORT[code] ?? LEG_SEAT_NAMES[code] ?? code, raw))
+            .filter((x) => x != null);
+          return (
+            <div className="seatrow" key={index}>
+              <span className="seatrow__k">第{index + 1}程</span>
+              {labels.length ? labels.map((label, i) => (
+                <span key={i} className={`seat-label seat-${label!.state}`}>{label!.text}</span>
+              )) : (
+                <span className="seat-label seat-off">暂无余票信息</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       <details className="journey-details">
         <summary>两程详情</summary>
         <div className="transfer-legs">{p.legs.map((leg, index) => (
           <Leg key={`${leg.trainCode}-${index}`} leg={leg} no={index + 1} date={date} prices={prices} loadingPrice={loadingPrice} onQueryPrice={onQueryPrice} />
         ))}</div>
       </details>
-    </Card>
+    </div>
   );
 }
 
@@ -262,26 +343,32 @@ export default function TransferList({ groups, date, prices, loadingPrice, onQue
     label: (
       <Space>
         {hub}
-        <Tag>{list.length} 个方案</Tag>
+        <span className="muted">{list.length} 个方案</span>
       </Space>
     ),
-    children: list.map((g) => (
-      <div key={`${g.firstTrainCode}-${g.secondTrainCode}`}>
-        {renderCard(g.best, 0)}
-        {g.plans.length > 1 && (
-          <Collapse
-            size="small"
-            ghost
-            styles={{ body: { padding: 0 }, header: { padding: 8, minHeight: 44 } }}
-            items={[{
-              key: 'alternatives',
-              label: `同车次其他方案（${g.plans.length - 1}）`,
-              children: g.plans.filter((p) => p !== g.best).map(renderCard),
-            }]}
-          />
-        )}
+    children: (
+      <div className="sheet">
+        {list.map((g) => (
+          // ⚠️ 用 Fragment 而非 div 包裹：`.plan:first-child` 靠 DOM 位置去分隔线，
+          // 多包一层会让每条方案都成了「第一个孩子」，行间细线全部失效。
+          <Fragment key={`${g.firstTrainCode}-${g.secondTrainCode}`}>
+            {renderCard(g.best, 0)}
+            {g.plans.length > 1 && (
+              <Collapse
+                size="small"
+                ghost
+                styles={{ body: { padding: 0 }, header: { padding: 8, minHeight: 44 } }}
+                items={[{
+                  key: 'alternatives',
+                  label: `同车次其他方案（${g.plans.length - 1}）`,
+                  children: g.plans.filter((p) => p !== g.best).map(renderCard),
+                }]}
+              />
+            )}
+          </Fragment>
+        ))}
       </div>
-    )),
+    ),
   }));
 
   return <Collapse ghost className="hub-list" styles={{ body: { padding: 0 }, header: { padding: '12px 4px', minHeight: 44 } }} items={items} activeKey={activeKeys} onChange={(k) => setActiveKeys(k as string[])} />;

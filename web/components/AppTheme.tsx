@@ -14,14 +14,19 @@ function subscribe(onChange: () => void): () => void {
 export default function AppTheme({ children }: { children: ReactNode }) {
   const dark = useSyncExternalStore(subscribe, () => window.matchMedia(DARK_QUERY).matches, () => false);
   const colors = {
-    page: dark ? '#101012' : '#f5f5f7',
-    surface: dark ? '#1c1c1e' : '#ffffff',
-    text: dark ? '#f5f5f7' : '#1d1d1f',
-    secondary: dark ? '#aaaab0' : '#68686e',
-    line: dark ? '#38383d' : '#e8e8ed',
-    blue: dark ? '#75b9ff' : '#0066cc',
-    green: dark ? '#79d69a' : '#267b48',
-    panel: dark ? '#232326' : '#fbfbfd',
+    page: dark ? '#0e0f11' : '#eff0f2',
+    surface: dark ? '#17181b' : '#ffffff',
+    text: dark ? '#f2f3f5' : '#16171a',
+    secondary: dark ? '#989aa1' : '#67696f',
+    line: dark ? '#2a2c31' : '#e2e3e7',
+    // 行间细线：比 line 更浅，用于同一块面内的行分隔（D79）
+    hairline: dark ? '#212328' : '#eef0f2',
+    blue: dark ? '#5aa0f5' : '#0b5fd0',
+    green: dark ? '#4fc98a' : '#0f7a46',
+    // 琥珀 = 紧张 / 超长等待；红 = 无票 / 来不及（D79 色彩语义）
+    amber: dark ? '#e0a24a' : '#9a5b00',
+    red: dark ? '#f0736a' : '#be2d22',
+    panel: dark ? '#212328' : '#f6f7f9',
   };
   const variables = Object.fromEntries(Object.entries(colors).map(([key, value]) => [`--rail-${key}`, value]));
   return (

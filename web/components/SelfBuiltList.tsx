@@ -3,19 +3,22 @@
  *
  * 每个行程展示：各程车次、换乘站与等待、总耗时、标记（疑似绕远 / 超长等待 / 换乘紧张）。
  * 分组逻辑来自 journeyView.groupByTransfers（纯函数，已单测）。
+ *
+ * D79：版式与官方中转一致——N 程各成一行，中间 N−1 个换乘断点。
  */
 
-import { Button, Card, Collapse, Empty, Segmented, Space, Tag } from 'antd';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { Button, Collapse, Empty, Segmented, Space } from 'antd';
 
 import JourneyTimes from './JourneyTimes.tsx';
 import ConnectionPanel from './ConnectionPanel.tsx';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
-import { durationLabel, priceKey, priceLabel, seatLabel, seatPrices } from '../lib/view.ts';
+import { dayOffsetAt, durationLabel, priceKey, priceLabel, seatLabel, seatPrices, LEG_SEAT_SHORT } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
 import { sortJourneys, type SortMode } from '../lib/journeys.ts';
 import type { ScoredJourney } from '../lib/selfbuilt.ts';
 import type { ConnectionResult } from '../lib/connection.ts';
+import type { Train } from '../../shared/types.ts';
 
 interface Props {
   journeys: ScoredJourney[];
@@ -43,8 +46,31 @@ interface Props {
   onQueryConnection?: (fromCode: string, toCode: string, waitMinutes: number) => void;
 }
 
-/** 一程 */
-function Leg({ train, no, name }: { train: ScoredJourney['legs'][number]; no: number; name: (code: string) => string }) {
+/** `HH:MM` 形式的历时 → 分钟；非法按 0 处理 */
+function legMinutes(leg: Train): number {
+  const m = /^(\d{1,3}):(\d{2})$/.exec((leg.duration ?? '').trim());
+  if (!m || Number(m[2]) > 59) return 0;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/**
+ * 每程到达时刻的跨天天数（D79）。
+ *
+ * 按整条行程累计，而不是只看本程——否则「次日 07:00 发、14:00 到」的程
+ * 会被漏标成当日。最后一程以 `totalMinutes` 为准。
+ */
+function legDayOffsets(journey: ScoredJourney): number[] {
+  let cum = 0;
+  return journey.legs.map((leg, i) => {
+    cum += journey.transfers[i]?.waitMinutes ?? 0;
+    cum += legMinutes(leg);
+    const elapsed = i === journey.legs.length - 1 ? journey.totalMinutes : cum;
+    return dayOffsetAt(journey.legs[0]!.startTime, elapsed);
+  });
+}
+
+/** 一程（展开后的详情行）：车次、始发终到、各席别价格 */
+function Leg({ train, no, name }: { train: Train; no: number; name: (code: string) => string }) {
   return (
     <div className="transfer-leg">
       <span className="leg-index">{no}</span>
@@ -60,6 +86,65 @@ function Leg({ train, no, name }: { train: ScoredJourney['legs'][number]; no: nu
           duration={train.duration}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * 换乘断点（D79）：独立成行，横跨整宽。
+ *
+ * 与官方中转共用同一套结构：等待时长着色 + 站对 + 同站标签 + 标记 + 接驳入口。
+ */
+function TransferNode({
+  transfer,
+  name,
+  waitMinutes,
+  risky,
+  longWait,
+  connections,
+  loadingConnection,
+  onQueryConnection,
+}: {
+  transfer: ScoredJourney['transfers'][number];
+  name: (code: string) => string;
+  waitMinutes: number;
+  risky: boolean;
+  longWait: boolean;
+  connections?: Props['connections'];
+  loadingConnection?: Props['loadingConnection'];
+  onQueryConnection?: Props['onQueryConnection'];
+}) {
+  // 行内只报到达站；「到达站 → 下一程出发站」由接驳面板说清（两条通路一致）
+  const key = `${transfer.station}>${transfer.toStation}`;
+  const waitClass = risky ? 'is-stop' : longWait ? 'is-hold' : 'is-ok';
+
+  return (
+    <div className="node">
+      <span className={`node__wait ${waitClass}`}>换乘 {durationLabel(waitMinutes)}</span>
+      <span className="node__pair">
+        {transfer.sameStation
+          ? name(transfer.station)
+          : `${name(transfer.station)} → ${name(transfer.toStation)}`}
+      </span>
+      <span className="node__kind">{transfer.sameStation ? '同站' : '同城异站'}</span>
+      {longWait && <span className="node__flag">超长等待</span>}
+      {risky && <span className="node__flag is-stop">换乘紧张</span>}
+      {!transfer.sameStation && (
+        <ConnectionPanel
+          point={{
+            fromName: name(transfer.station),
+            toName: name(transfer.toStation),
+            fromCode: transfer.station,
+            toCode: transfer.toStation,
+            waitMinutes: transfer.waitMinutes,
+          }}
+          result={connections?.[key] ?? null}
+          loading={loadingConnection?.has(key) ?? false}
+          onQuery={() => onQueryConnection?.(transfer.station, transfer.toStation, transfer.waitMinutes)}
+          // 换乘断点已报站对，面板不再重复
+          showPair={false}
+        />
+      )}
     </div>
   );
 }
@@ -87,79 +172,17 @@ function JourneyCard({
   });
   const total = legPrices.length > 0 && legPrices.every((x) => x != null)
     ? legPrices.reduce((a, b) => a! + b!, 0) : null;
+  const dayOffsets = legDayOffsets(j);
 
   return (
-    <Card className="ticket-card" size="small" variant="borderless" styles={{ body: { padding: 'var(--card-padding, 20px)' } }}>
-      <div className="ticket-caption">
-        <span>
-          {name(first.fromStation)} → {name(last.toStation)}
-        </span>
-        <span>总耗时 {durationLabel(j.totalMinutes)}</span>
-      </div>
-      <div className="ticket-main">
-        <div className="train-identity">
-          <strong>{j.legs.map((l) => l.trainCode).join(' → ')}</strong>
+    <div className="plan">
+      <div className="plan__top">
+        <div className="plan__head">
+          <div className="plan__route">{name(first.fromStation)} → {name(last.toStation)}</div>
+          <div className="plan__codes">{j.legs.map((l) => l.trainCode).join(' → ')}</div>
         </div>
-        <JourneyTimes
-          fromStation={name(first.fromStation)}
-          toStation={name(last.toStation)}
-          startTime={first.startTime}
-          arriveTime={last.arriveTime}
-          durationMinutes={j.totalMinutes}
-        />
-        <div className="transfer-facts">
-          {j.transfers.map((t, i) => {
-            // 行内只报到达站；「到达站 → 下一程出发站」由接驳面板说清（两条通路一致）
-            const key = `${t.station}>${t.toStation}`;
-            return (
-              <div className="transfer-wait" key={`${t.station}-${i}`}>
-                换乘 {name(t.station)}　等待 {durationLabel(t.waitMinutes)}
-                <span className="muted">{t.sameStation ? '同站' : '同城异站'}</span>
-                {!t.sameStation && (
-                  <ConnectionPanel
-                    point={{
-                      fromName: name(t.station),
-                      toName: name(t.toStation),
-                      fromCode: t.station,
-                      toCode: t.toStation,
-                      waitMinutes: t.waitMinutes,
-                    }}
-                    result={connections?.[key] ?? null}
-                    loading={loadingConnection?.has(key) ?? false}
-                    onQuery={() =>
-                      onQueryConnection?.(t.station, t.toStation, t.waitMinutes)
-                    }
-                  />
-                )}
-              </div>
-            );
-          })}
-          {/* D77：每程余票——自研卡片此前完全不显示，用户看不到有没有票 */}
-          <div className="seat-list">
-            {j.legs.map((leg, index) => {
-              const labels = leg.seats
-                .map((s) => seatLabel(s.name, s.raw))
-                .filter((x) => x != null);
-              return labels.length ? (
-                labels.map((label, i) => (
-                  <span key={`${index}-${i}`} className={`seat-label seat-${label!.state}`}>
-                    第{index + 1}程 {label!.text}
-                  </span>
-                ))
-              ) : (
-                <span key={index} className="seat-label seat-off">第{index + 1}程 暂无余票信息</span>
-              );
-            })}
-          </div>
-        </div>
-        {(j.detour || j.longWait || j.risky) && (
-          <Space size={4} wrap>
-            {j.detour && <Tag color="warning">疑似绕远</Tag>}
-            {j.longWait && <Tag>超长等待</Tag>}
-            {j.risky && <Tag color="warning">换乘紧张</Tag>}
-          </Space>
-        )}
-        <div className="ticket-actions">
+        <div className="plan__sum">
+          <span>总 {durationLabel(j.totalMinutes)}</span>
           {total != null ? (
             <span className="ref-price">
               <strong className="total-price">二等座参考价 {priceLabel(total)}</strong>
@@ -170,6 +193,59 @@ function JourneyCard({
           )}
         </div>
       </div>
+
+      {j.legs.map((leg, i) => (
+        <Fragment key={`${leg.trainNo}-${i}`}>
+          <JourneyTimes
+            trainCode={leg.trainCode}
+            fromStation={name(leg.fromStation)}
+            toStation={name(leg.toStation)}
+            startTime={leg.startTime}
+            arriveTime={leg.arriveTime}
+            duration={leg.duration}
+            dayOffset={dayOffsets[i]}
+          />
+          {i < j.legs.length - 1 && j.transfers[i] && (
+            <TransferNode
+              transfer={j.transfers[i]!}
+              name={name}
+              waitMinutes={j.transfers[i]!.waitMinutes}
+              risky={j.risky}
+              longWait={j.longWait}
+              connections={connections}
+              loadingConnection={loadingConnection}
+              onQueryConnection={onQueryConnection}
+            />
+          )}
+        </Fragment>
+      ))}
+
+      {j.detour && (
+        <Space size={4} wrap>
+          <span className="node__flag">疑似绕远</span>
+        </Space>
+      )}
+
+      <div className="seats">
+        {j.legs.map((leg, index) => {
+          // D77：每个席别都渲染——「无」本身是信息，不能因为无票就隐藏
+          // 卡片用短名（8 个席别挤一行），展开详情用全名。
+          const labels = leg.seats
+            .map((s) => seatLabel(LEG_SEAT_SHORT[s.code] ?? s.name, s.raw))
+            .filter((x) => x != null);
+          return (
+            <div className="seatrow" key={index}>
+              <span className="seatrow__k">第{index + 1}程</span>
+              {labels.length ? labels.map((label, i) => (
+                <span key={i} className={`seat-label seat-${label!.state}`}>{label!.text}</span>
+              )) : (
+                <span className="seat-label seat-off">暂无余票信息</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       <details className="journey-details">
         <summary>完整行程</summary>
         <div className="transfer-legs">
@@ -209,7 +285,7 @@ function JourneyCard({
           })}
         </div>
       </details>
-    </Card>
+    </div>
   );
 }
 
@@ -238,11 +314,11 @@ export default function SelfBuiltList({
       label: (
         <Space>
           {journeyTitle(g.transfers)}
-          <Tag>{g.journeys.length} 条</Tag>
+          <span className="muted">{g.journeys.length} 条</span>
         </Space>
       ),
       children: (
-        <>
+        <div className="sheet">
           {visible.map((j, i) => (
             <JourneyCard
               key={`${j.legs.map((l) => l.trainNo).join('-')}-${i}`}
@@ -273,7 +349,7 @@ export default function SelfBuiltList({
               {open ? '收起' : `展开更多（还有 ${rest} 条）`}
             </Button>
           )}
-        </>
+        </div>
       ),
     };
   });

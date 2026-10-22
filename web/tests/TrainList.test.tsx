@@ -52,13 +52,28 @@ test('TrainList：完整余票响应的 55 趟车均展示，不限制为前三�
   expect(result.trains).toHaveLength(55);
   const { container } = render(<TrainList result={{ ...result, date: '2026-10-07' }} {...priceProps} />);
   expect(screen.getAllByRole('group', { name: '行程时间' })).toHaveLength(55);
-  expect([...container.querySelectorAll('.train-identity strong')].map((node) => node.textContent))
+  // D79：车次压在轨道线上，不再有独立的「车次」列
+  expect([...container.querySelectorAll('.leg__trk b')].map((node) => node.textContent))
     .toEqual(result.trains.map((train) => train.trainCode));
 });
 
 test('TrainList：result 为 null 时不渲染', () => {
   const { container } = render(<TrainList result={null} {...priceProps} />);
   expect(container.innerHTML).toBe('');
+});
+
+// ── D79：直达是一整块面，每趟车一行，不是一叠卡片 ──────────
+test('TrainList：所有车次在同一块结果面内，不再各自成卡（D79）', () => {
+  const { container } = render(
+    <TrainList
+      result={{ trains: [train(), train({ trainCode: 'G2', trainNo: '2' })], stationMap: {}, date: '2026-10-07' }}
+      {...priceProps}
+    />,
+  );
+  const sheets = container.querySelectorAll('.sheet');
+  expect(sheets).toHaveLength(1);
+  expect(sheets[0]!.querySelectorAll('.direct')).toHaveLength(2);
+  expect(container.querySelectorAll('.ticket-card')).toHaveLength(0);
 });
 
 test('TrainList：展示车次、站名与时刻', () => {
@@ -87,6 +102,33 @@ test('TrainList：始发/终到与上下车不同时标注', () => {
     />,
   );
   expect(screen.getByText('始发 北京 · 终到 杭州东')).toBeTruthy();
+});
+
+// ── D77：席别全不可用时要能区分「没票」与「没数据」──────────
+test('TrainList：席别全部不可用时显示「暂无余票信息」，而非笼统的「无票」', () => {
+  render(<TrainList result={{ trains: [train({ seats: [] })], stationMap: {}, date: '2026-10-07' }} {...priceProps} />);
+  expect(screen.getByText('暂无余票信息')).toBeTruthy();
+});
+
+test('TrainList：席别全为「无」时仍逐项列出，不折叠成一句话（D77）', () => {
+  render(
+    <TrainList
+      result={{
+        trains: [train({
+          seats: [
+            { code: 'ZE', name: '二等座', available: false, count: null, raw: '无' },
+            { code: 'ZY', name: '一等座', available: false, count: null, raw: '无' },
+          ],
+        })],
+        stationMap: {},
+        date: '2026-10-07',
+      }}
+      {...priceProps}
+    />,
+  );
+  expect(screen.getByText('二等座 无')).toBeTruthy();
+  expect(screen.getByText('一等座 无')).toBeTruthy();
+  expect(screen.queryByText('暂无余票信息')).toBeNull();
 });
 
 test('TrainList：席别余票展示为标签', () => {

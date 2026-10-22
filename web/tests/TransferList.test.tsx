@@ -68,11 +68,53 @@ test('TransferList：完整响应的 10 条方案与 20 程详情均保留', () 
   const { plans } = parseTransfer(transferFixture);
   expect(plans).toHaveLength(10);
   const { container } = render(<TransferList groups={groups(plans)} {...priceProps} />);
-  expect(container.querySelectorAll('.ticket-card')).toHaveLength(10);
+  // D79：方案是一块面里的行，不再是独立卡片
+  expect(container.querySelectorAll('.plan')).toHaveLength(10);
   expandDetails();
   expect(container.querySelectorAll('.transfer-leg')).toHaveLength(20);
   expect([...container.querySelectorAll('.leg-heading strong')].map((node) => node.textContent).sort())
     .toEqual(plans.flatMap((plan) => plan.legs.map((leg) => leg.trainCode)).sort());
+});
+
+// ── D79：两程各成一行，换乘独立成行横跨整宽 ────────────────
+test('TransferList：两程各占一行，换乘在中间独立成行（D79）', () => {
+  const { container } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  const body = container.querySelector('.plan')!;
+  // 方案摘要区：两程时刻各一行（D77 起摘要里已有每程余票，此处只数行程段）
+  expect(body.querySelectorAll(':scope > .leg')).toHaveLength(2);
+  expect(body.querySelectorAll(':scope > .node')).toHaveLength(1);
+
+  // 换乘断点里要有等待时长、站对与同站标签
+  const node = body.querySelector('.node')!;
+  expect(node.textContent).toContain('换乘 30分');
+  expect(node.textContent).toContain('南京南');
+  expect(node.textContent).toContain('同站');
+});
+
+test('TransferList：换乘等待按风险着色（D79）', () => {
+  const { container } = render(<TransferList groups={groups([plan({ waitMinutes: 5 })])} {...priceProps} />);
+  // 低于换乘下限 → 红色（is-stop）
+  expect(container.querySelector('.node__wait')?.className).toContain('is-stop');
+});
+
+// 回归：方案之间靠 `.plan:first-child` 去首行分隔线。若有人在每条方案外
+// 多包一层 div，每条都成了「第一个孩子」，行间细线会全部消失。
+test('TransferList：多条方案是同一个面的直接子级，行间细线不失效（D79）', () => {
+  const other = plan({
+    middleStation: '郑州东', totalMinutes: 400,
+    firstTrainCode: 'G5', secondTrainCode: 'G6',
+  });
+  const { container } = render(<TransferList groups={groups([plan(), other])} {...priceProps} />);
+  const plans = [...container.querySelectorAll('.plan')];
+  expect(plans.length).toBeGreaterThanOrEqual(2);
+  for (const p of plans) expect(p.parentElement?.className).toBe('sheet');
+});
+
+test('TransferList：同城异站换乘断点标出「到达站 → 出发站」（D79）', () => {
+  const { container } = render(<TransferList groups={groups([crossPlan()])} {...priceProps} />);
+  const node = container.querySelector('.node')!;
+  expect(node.textContent).toContain('南京南 → 南京');
+  expect(node.textContent).toContain('同城异站');
 });
 
 test('TransferList：摘要之外完整保留各席别、始发终到与已查价格', () => {
@@ -80,8 +122,11 @@ test('TransferList：摘要之外完整保留各席别、始发终到与已查�
   p.legs[0] = { ...p.legs[0]!, startStation: '哈尔滨西', endStation: '深圳北', seats: { ZE: '无', ZY: '有', SWZ: '2', WZ: '无' } };
   const { container } = render(<TransferList groups={groups([p])} {...priceProps} prices={{ '1|01|05': { O: 300, M: 450, '9': 900 }, '2|01|04': { O: 280 } }} />);
   expandDetails();
-  for (const text of ['始发 哈尔滨西 · 终到 深圳北', '一等座 有', '商务座 2 张', '无座 无', '二等座参考价 ¥580']) {
-    expect(screen.getByText(text)).toBeTruthy();
+  // 席别同时出现在卡片摘要行（短名）与展开详情（全名），故详情层用 getAllByText
+  expect(screen.getByText('始发 哈尔滨西 · 终到 深圳北')).toBeTruthy();
+  expect(screen.getByText('二等座参考价 ¥580')).toBeTruthy();
+  for (const text of ['一等座 有', '商务座 2 张', '无座 无']) {
+    expect(screen.getAllByText(text).length).toBeGreaterThan(0);
   }
   // 每程价格完整保留：第一程 3 个席别、第二程 1 个（对齐小表两列）
   const rows = [...container.querySelectorAll('.price-row')].map((r) => [
@@ -95,19 +140,23 @@ test('TransferList：摘要之外完整保留各席别、始发终到与已查�
 });
 
 test('TransferList：按枢纽分组并展示起终点与总耗时', () => {
-  render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  const { container } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
   // 枢纽名同时出现在折叠标题与换乘行，故用 getAllByText
   expect(screen.getAllByText(/南京南/).length).toBeGreaterThan(0);
-  expect(screen.getByText('北京南 → 上海虹桥')).toBeTruthy();
-  expect(screen.getByText('总耗时 6时')).toBeTruthy();
+  expect(container.querySelector('.plan__route')?.textContent).toBe('北京南 → 上海虹桥');
+  expect(container.querySelector('.plan__sum')?.textContent).toContain('总 6时');
 });
 
 test('TransferList：展示两程车次与换乘等待', () => {
-  render(<TransferList groups={groups([plan()])} {...priceProps} />);
-  expect(screen.getByText('G1')).toBeTruthy();
-  expect(screen.getByText('G2')).toBeTruthy();
-  expect(screen.getByText(/换乘 南京南/)).toBeTruthy();
-  expect(screen.getByText('同站')).toBeTruthy();
+  const { container } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  // 车次出现在车次链与两条轨道线上，故用 getAllByText
+  expect(screen.getAllByText('G1').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('G2').length).toBeGreaterThan(0);
+  // D79：等待与站名分属不同元素，故断言行内文本
+  const node = container.querySelector('.node')!;
+  expect(node.textContent).toContain('换乘 30分');
+  expect(node.textContent).toContain('南京南');
+  expect(node.textContent).toContain('同站');
 });
 
 test('TransferList：同车次在不同枢纽展示对应行程、余票、风险和查价站序', () => {
@@ -120,11 +169,14 @@ test('TransferList：同车次在不同枢纽展示对应行程、余票、风�
     ],
   });
   const onQueryPrice = vi.fn();
-  render(<TransferList groups={groups([nanjing, hangzhou])} {...priceProps} onQueryPrice={onQueryPrice} />);
-  expect(screen.getByText(/换乘 南京南.*等待 30分/)).toBeTruthy();
-  expect(screen.getByText(/换乘 杭州东.*等待 10分/)).toBeTruthy();
-  expect(screen.getByText('总耗时 6时40分')).toBeTruthy();
-  expect(screen.getByText('总耗时 6时20分')).toBeTruthy();
+  const { container } = render(<TransferList groups={groups([nanjing, hangzhou])} {...priceProps} onQueryPrice={onQueryPrice} />);
+  // D79：换乘断点独立成行，等待与站名分属不同元素，故断言整行文本
+  const nodes = [...container.querySelectorAll('.node')].map((n) => n.textContent ?? '');
+  expect(nodes.some((t) => /换乘 30分/.test(t) && t.includes('南京南'))).toBe(true);
+  expect(nodes.some((t) => /换乘 10分/.test(t) && t.includes('杭州东'))).toBe(true);
+  const sums = [...container.querySelectorAll('.plan__sum')].map((n) => n.textContent ?? '');
+  expect(sums.some((t) => t.includes('总 6时40分'))).toBe(true);
+  expect(sums.some((t) => t.includes('总 6时20分'))).toBe(true);
   expect(screen.getByText('二等座 2 张')).toBeTruthy();
   expect(screen.getAllByText('低于换乘下限')).toHaveLength(1);
   expandDetails();
@@ -174,31 +226,39 @@ test('TransferList：每程全部席别都渲染，不因无票而隐藏（D77�
   const p = plan();
   p.legs[0] = { ...p.legs[0]!, seats: { ZE: '有', ZY: '12', SWZ: '无', WZ: '有' } };
   p.legs[1] = { ...p.legs[1]!, seats: { ZE: '无', ZY: '有' } };
-  render(<TransferList groups={groups([p])} {...priceProps} />);
+  const { container } = render(<TransferList groups={groups([p])} {...priceProps} />);
 
-  // 第 1 程：四个席别都在
-  expect(screen.getByText('第1程 二等座 有')).toBeTruthy();
-  expect(screen.getByText('第1程 一等座 12 张')).toBeTruthy();
-  expect(screen.getByText('第1程 商务座 无')).toBeTruthy();
-  expect(screen.getByText('第1程 无座 有')).toBeTruthy();
-
-  // 第 2 程：两个席别都在
-  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
-  expect(screen.getByText('第2程 一等座 有')).toBeTruthy();
+  // D79：第 N 程是一个行首标签，席别在该行内——断言整行文本。
+  // D77：卡片层用短名（二等 / 一等 / 商务 / 无座），展开详情才用全名。
+  const rows = [...container.querySelectorAll('.seatrow')].map((r) => r.textContent?.replace(/\s+/g, ' ').trim());
+  expect(rows[0]).toContain('第1程');
+  for (const s of ['二等 有', '一等 12 张', '商务 无', '无座 有']) {
+    expect(rows[0]).toContain(s);
+  }
+  expect(rows[1]).toContain('第2程');
+  for (const s of ['二等 无', '一等 有']) {
+    expect(rows[1]).toContain(s);
+  }
 });
 
 test('TransferList：普速车席别用中文名，不显示原始码（D77）', () => {
   const p = plan();
   p.legs[0] = { ...p.legs[0]!, seats: { RW: '1', YW: '14', YZ: '有', GR: '无' } };
   p.legs[1] = { ...p.legs[1]!, seats: {} };
-  render(<TransferList groups={groups([p])} {...priceProps} />);
+  const { container } = render(<TransferList groups={groups([p])} {...priceProps} />);
 
-  expect(screen.getByText('第1程 软卧 1 张')).toBeTruthy();
-  expect(screen.getByText('第1程 硬卧 14 张')).toBeTruthy();
-  expect(screen.getByText('第1程 硬座 有')).toBeTruthy();
-  expect(screen.getByText('第1程 高级软卧 无')).toBeTruthy();
+  // 卡片层：短名（软卧 / 硬卧 / 硬座 本就短，高软是「高级软卧」的简称）
+  const row = container.querySelector('.seatrow')!.textContent ?? '';
+  expect(row).toContain('软卧 1 张');
+  expect(row).toContain('硬卧 14 张');
+  expect(row).toContain('硬座 有');
+  expect(row).toContain('高软 无');
   // 不能出现原始码
-  expect(screen.queryByText(/第1程 RW/)).toBeNull();
+  expect(row).not.toMatch(/RW|YW|YZ|GR/);
+
+  // 展开详情用全名，简称能查回全称
+  expandDetails();
+  expect(screen.getAllByText('高级软卧 无').length).toBeGreaterThan(0);
 });
 
 test('TransferList：超长等待标记', () => {
@@ -231,7 +291,7 @@ test('TransferList：只查到一程时提示展开两程查价', () => {
 // 会让后到的枢纽默认折叠，用户看不到自动查好的参考价）。
 test('TransferList：流式新增枢纽自动展开', async () => {
   const { rerender } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
-  expect(screen.getByText('G1')).toBeTruthy(); // 首个枢纽已展开，卡片可见
+  expect(screen.getAllByText('G1').length).toBeGreaterThan(0); // 首个枢纽已展开，卡片可见
 
   const second = plan({
     middleStation: '郑州东',
@@ -244,7 +304,7 @@ test('TransferList：流式新增枢纽自动展开', async () => {
   });
   rerender(<TransferList groups={groups([plan(), second])} {...priceProps} />);
   // 后到的郑州东面板也自动展开
-  await waitFor(() => expect(screen.getByText('G5')).toBeTruthy());
+  await waitFor(() => expect(screen.getAllByText('G5').length).toBeGreaterThan(0));
 });
 
 test('TransferList：未查价的程显示「查价」按钮', () => {
@@ -264,10 +324,12 @@ test('TransferList：点「查价」触发回调', () => {
 test('TransferList：折叠详情时保留车次、等待风险和两程余票，不自动查价', () => {
   const onQueryPrice = vi.fn();
   const { container } = render(<TransferList groups={groups([plan({ waitMinutes: 10 })])} {...priceProps} onQueryPrice={onQueryPrice} />);
-  expect(screen.getByText('G1 → G2')).toBeTruthy();
+  expect(container.querySelector('.plan__codes')?.textContent).toBe('G1 → G2');
   expect(screen.getByText('低于换乘下限')).toBeTruthy();
-  expect(screen.getByText('第1程 二等座 有')).toBeTruthy();
-  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
+  // 卡片层用短名（D77）
+  const rows = [...container.querySelectorAll('.seatrow')].map((r) => r.textContent ?? '');
+  expect(rows[0]).toContain('二等 有');
+  expect(rows[1]).toContain('二等 无');
   expect(container.querySelector('details')?.open).toBe(false);
   // jsdom 不计算 details 的原生可见性；闭合状态断言 open，隐藏效果另用浏览器验证。
   expandDetails();

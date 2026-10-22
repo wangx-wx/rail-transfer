@@ -32,6 +32,13 @@ interface Props {
   result: ConnectionResult | null;
   loading: boolean;
   onQuery: () => void;
+  /**
+   * 是否显示「到达站 → 出发站」表头。
+   *
+   * D79 起换乘断点自己就报了站对，面板再报一遍是重复噪音；自研通路的
+   * 断点同样如此。只有独立使用面板时才需要它自报站对。
+   */
+  showPair?: boolean;
 }
 
 /** 米 → 「8.1 公里」；不足 1 公里给米 */
@@ -116,14 +123,14 @@ function TransitSegments({ plan }: { plan: TransitPlan }) {
   );
 }
 
-export default function ConnectionPanel({ point, result, loading, onQuery }: Props) {
+export default function ConnectionPanel({ point, result, loading, onQuery, showPair = true }: Props) {
   const [open, setOpen] = useState(false);
 
-  const header = (
+  const header = showPair ? (
     <span className="connection-pair">
       {point.fromName} → {point.toName}
     </span>
-  );
+  ) : null;
 
   // 跨城（D75）：只给一行事实，不给按钮
   if (result?.kind === 'crossCity') {
@@ -131,7 +138,9 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
       <div className="connection-panel">
         <Tag color="default">跨城接驳</Tag>
         <span className="muted">
-          {header}· 直线约 {Math.round(result.km)} 公里 · 不提供市内交通方案
+          {header}
+          {header && ' · '}
+          直线约 {Math.round(result.km)} 公里 · 不提供市内交通方案
         </span>
       </div>
     );
@@ -141,8 +150,12 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
   if (result?.kind === 'noCoord') {
     return (
       <div className="connection-panel">
-        <span className="muted">{header}· 未获取到站点位置</span>
-        <Button size="small" disabled>
+        <span className="muted">
+          {header}
+          {header && ' · '}
+          未获取到站点位置
+        </span>
+        <Button type="link" size="small" className="link-btn" disabled>
           查接驳
         </Button>
       </div>
@@ -152,8 +165,8 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
   if (!result) {
     return (
       <div className="connection-panel">
-        <span className="muted">{header}</span>
-        <Button size="small" loading={loading} onClick={onQuery}>
+        {header && <span className="muted">{header}</span>}
+        <Button type="link" size="small" className="link-btn" loading={loading} onClick={onQuery}>
           查接驳
         </Button>
       </div>
@@ -169,16 +182,18 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
 
   return (
     <div className="connection-panel">
-      <div className="connection-summary">
-        <span className="muted">{header}</span>
-        <Space size={4} wrap>
-          {flags.map((f) => (
-            <Tag key={f.label} color={f.kind === 'bad' ? 'error' : f.kind === 'risky' ? 'warning' : 'default'}>
-              {f.label}
-            </Tag>
-          ))}
-        </Space>
-      </div>
+      {(header || flags.length > 0) && (
+        <div className="connection-summary">
+          {header && <span className="muted">{header}</span>}
+          <Space size={4} wrap>
+            {flags.map((f) => (
+              <Tag key={f.label} color={f.kind === 'bad' ? 'error' : f.kind === 'risky' ? 'warning' : 'default'}>
+                {f.label}
+              </Tag>
+            ))}
+          </Space>
+        </div>
+      )}
 
       {bothEmpty && (
         <div className="muted">
@@ -212,7 +227,7 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
           {transit.kind === 'error' && <span className="muted">公交：{transit.message}</span>}
           {driving.kind === 'error' && <span className="muted">打车：{driving.message}</span>}
           {retriable && (
-            <Button size="small" loading={loading} onClick={onQuery}>
+            <Button type="link" size="small" className="link-btn" loading={loading} onClick={onQuery}>
               重试
             </Button>
           )}
@@ -221,7 +236,7 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
 
       {(transit.kind === 'plan' || driving.kind === 'plan') && (
         <>
-          <Button type="link" size="small" onClick={() => setOpen((v) => !v)}>
+          <Button type="link" size="small" className="link-btn" onClick={() => setOpen((v) => !v)}>
             {open ? '收起详情' : '展开详情'}
           </Button>
           {open && (
