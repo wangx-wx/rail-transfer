@@ -183,7 +183,7 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, conne
       </div>
       <div className="ticket-main">
         <div className="train-identity"><strong>{p.firstTrainCode} → {p.secondTrainCode}</strong><span>{p.sameTrain ? '同车接续' : '换乘一次'}</span></div>
-        <JourneyTimes fromStation={p.fromStation} toStation={p.endStation} startTime={p.startTime} arriveTime={p.arriveTime} duration={durationLabel(p.totalMinutes)} />
+        <JourneyTimes fromStation={p.fromStation} toStation={p.endStation} startTime={p.startTime} arriveTime={p.arriveTime} durationMinutes={p.totalMinutes} />
         <div className="transfer-facts">
           <div className="transfer-wait">换乘 {p.middleStation}　等待 {durationLabel(p.waitMinutes)}</div>
           <span className="muted">{p.sameStation ? '同站' : '同城异站'}</span>

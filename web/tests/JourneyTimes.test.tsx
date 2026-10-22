@@ -22,3 +22,16 @@ test('同日：不出现跨天标识', () => {
   render(<JourneyTimes fromStation="北京南" toStation="上海虹桥" startTime="08:00" arriveTime="12:30" duration="4时30分" />);
   expect(screen.queryByLabelText(/跨\d+天/)).toBeNull();
 });
+
+// ── D79：跨 2 天以上必须正确标 +2，不能一律退化成 +1 ──────
+test('跨 2 天：显示 +2 而不是 +1（D79）', () => {
+  // 20:00 发 + 50 小时 = 第 3 天 22:00 到；到达时刻数值大于发车，旧的
+  // 「到达 < 发车」回退判断会漏判
+  render(<JourneyTimes fromStation="广州" toStation="拉萨" startTime="20:00" arriveTime="22:00" duration="50:00" />);
+  expect(screen.getByLabelText('跨2天').textContent).toBe('+2');
+});
+
+test('跨天：接受分钟数入参也能算对（D79）', () => {
+  render(<JourneyTimes fromStation="广州" toStation="拉萨" startTime="20:00" arriveTime="22:00" durationMinutes={50 * 60} />);
+  expect(screen.getByLabelText('跨2天').textContent).toBe('+2');
+});

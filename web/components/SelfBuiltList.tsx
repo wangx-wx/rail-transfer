@@ -105,7 +105,7 @@ function JourneyCard({
           toStation={name(last.toStation)}
           startTime={first.startTime}
           arriveTime={last.arriveTime}
-          duration={durationLabel(j.totalMinutes)}
+          durationMinutes={j.totalMinutes}
         />
         <div className="transfer-facts">
           {j.transfers.map((t, i) => {

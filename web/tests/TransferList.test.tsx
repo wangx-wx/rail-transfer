@@ -152,6 +152,13 @@ test('TransferList：同枢纽同车次的其他行程可展开，重复响应�
   expect(screen.getAllByText('北京南 → 上海虹桥')).toHaveLength(1);
 });
 
+// ── D79：跨 2 天的中转方案要标 +2，不能一律 +1 ─────────────
+test('TransferList：跨 2 天以上正确标 +2（D79）', () => {
+  const p = plan({ startTime: '20:00', arriveTime: '22:00', totalMinutes: 50 * 60 });
+  render(<TransferList groups={groups([p])} {...priceProps} />);
+  expect(screen.getByLabelText('跨2天').textContent).toBe('+2');
+});
+
 test('TransferList：同城异站标签', () => {
   render(<TransferList groups={groups([plan({ sameStation: false })])} {...priceProps} />);
   expect(screen.getByText('同城异站')).toBeTruthy();
