@@ -246,7 +246,10 @@
 
 /* ── 响应式 ─────────────────────────────────────────────── */
 @media (max-width: 959px) {
-  .query-form { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 180px; grid-template-areas: "from swap to date" "access access actions actions"; }
+  .query-form {
+    grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 180px;
+    grid-template-areas: "from swap to date" "access access access access" "actions actions actions actions";
+  }
   .query-actions { justify-content: flex-end; align-self: end; padding-top: 0; }
 }
 
