@@ -148,6 +148,40 @@ test('parseTransitRoutes：步行距离是各步行段之和（上游无汇总�
   expect(p!.walkMeters).toBe(380);
 });
 
+// ── D78：逐段时长——用户要看到「每一段各需多久」 ──────────
+test('parseTransitRoutes：保留逐段明细，含步行段与乘车段（D78）', () => {
+  const [p] = parseTransitRoutes({ routes: [transitRoute()] });
+
+  // 样本：步行1分 → 地铁8分 → 步行4分 → 地铁12分 → 步行1分
+  expect(p!.segments!).toHaveLength(5);
+  expect(p!.segments!.map((s) => s.mode)).toEqual([
+    'WALKING', 'TRANSIT', 'WALKING', 'TRANSIT', 'WALKING',
+  ]);
+  expect(p!.segments!.map((s) => s.durationMinutes)).toEqual([1, 8, 4, 12, 1]);
+});
+
+test('parseTransitRoutes：步行段只给距离与时长，没有起止站名（D78）', () => {
+  const [p] = parseTransitRoutes({ routes: [transitRoute()] });
+  const walk = p!.segments![0]!;
+  expect(walk.mode).toBe('WALKING');
+  expect(walk.distanceMeters).toBe(49);
+  // 上游 WALKING 步骤不含 geton/getoff，不能编造
+  expect(walk.title).toBeUndefined();
+  expect(walk.geton).toBeUndefined();
+  expect(walk.getoff).toBeUndefined();
+});
+
+test('parseTransitRoutes：乘车段带线路名、上下车站、站数与时长（D78）', () => {
+  const [p] = parseTransitRoutes({ routes: [transitRoute()] });
+  const ride = p!.segments![1]!;
+  expect(ride.mode).toBe('TRANSIT');
+  expect(ride.title).toBe('地铁4号线大兴线');
+  expect(ride.geton).toBe('北京南站');
+  expect(ride.getoff).toBe('菜市口');
+  expect(ride.stationCount).toBe(2);
+  expect(ride.durationMinutes).toBe(8);
+});
+
 test('parseTransitRoutes：换乘次数 = 乘车段数 − 1', () => {
   const [p] = parseTransitRoutes({ routes: [transitRoute()] });
   expect(p!.transfers).toBe(1);

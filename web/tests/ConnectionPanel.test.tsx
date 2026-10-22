@@ -93,6 +93,44 @@ test('ConnectionPanel：展开后给出线路名、上下车站、步行距离�
   expect(screen.getByText(/直线\s*5\.9\s*公里/)).toBeTruthy();
 });
 
+// ── D78：逐段时长——换乘公交时要看得到每一段各需多久 ──────
+test('ConnectionPanel：公交逐段显示时长，步行段也标（D78）', () => {
+  const r = okResult();
+  r.transit = {
+    kind: 'plan',
+    plan: {
+      durationMinutes: 30,
+      distanceMeters: 8056,
+      walkMeters: 380,
+      fareFen: 400,
+      transfers: 1,
+      hasSubway: true,
+      lines: [
+        { vehicle: 'SUBWAY', title: '地铁4号线大兴线', geton: '北京南站', getoff: '菜市口', stationCount: 2, runningStatus: 300 },
+        { vehicle: 'SUBWAY', title: '地铁7号线', geton: '菜市口', getoff: '北京西站', stationCount: 4, runningStatus: 300 },
+      ],
+      segments: [
+        { mode: 'WALKING', durationMinutes: 1, distanceMeters: 49 },
+        { mode: 'TRANSIT', durationMinutes: 8, distanceMeters: 2790, title: '地铁4号线大兴线', geton: '北京南站', getoff: '菜市口', stationCount: 2 },
+        { mode: 'WALKING', durationMinutes: 4, distanceMeters: 257 },
+        { mode: 'TRANSIT', durationMinutes: 12, distanceMeters: 4886, title: '地铁7号线', geton: '菜市口', getoff: '北京西站', stationCount: 4 },
+        { mode: 'WALKING', durationMinutes: 1, distanceMeters: 74 },
+      ],
+    },
+  };
+  const { container } = render(<ConnectionPanel point={POINT} result={r} loading={false} onQuery={noop} />);
+  fireEvent.click(screen.getByText(/展开详情/));
+
+  const segs = [...container.querySelectorAll('.connection-segment')].map((n) =>
+    n.textContent?.replace(/\s+/g, ' ').trim(),
+  );
+  // 5 段，每段都带时长
+  expect(segs).toHaveLength(5);
+  expect(segs[0]).toMatch(/步行.*49 米.*1分/);
+  expect(segs[1]).toMatch(/地铁4号线大兴线.*8分/);
+  expect(segs[3]).toMatch(/地铁7号线.*12分/);
+});
+
 test('ConnectionPanel：上游给了车费就展示并标「路况估算」（D76）', () => {
   render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
   fireEvent.click(screen.getByText(/展开详情/));

@@ -52,17 +52,43 @@ function summaryText(label: string, minutes: number, waitMinutes: number): strin
   return `${label} ${durationLabel(minutes)} · ${tail}`;
 }
 
-/** 公交线路的逐段明细 */
-function TransitLines({ plan }: { plan: TransitPlan }) {
+/**
+ * 公交逐段明细（D78）：每段都标时长，步行段只给距离。
+ *
+ * 与旧版 `lines` 的区别：旧版只列「坐了哪几条线」，看不出每段各多久；
+ * 这里按时间顺序列出全部步骤，时长靠右对齐便于竖读。
+ */
+function TransitSegments({ plan }: { plan: TransitPlan }) {
+  if (!plan.segments?.length) {
+    // 上游未给 steps 时的兜底：退回只列线路名
+    return (
+      <div className="connection-lines">
+        {plan.lines.map((l, i) => (
+          <div className="connection-line" key={`${l.title}-${i}`}>
+            <span className="connection-line-title">{l.title}</span>
+            <span className="muted">
+              {l.geton} → {l.getoff}
+              {l.stationCount != null && ` · ${l.stationCount} 站`}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="connection-lines">
-      {plan.lines.map((l, i) => (
-        <div className="connection-line" key={`${l.title}-${i}`}>
-          <span className="connection-line-title">{l.title}</span>
-          <span className="muted">
-            {l.geton} → {l.getoff}
-            {l.stationCount != null && ` · ${l.stationCount} 站`}
+    <div className="connection-segments">
+      {plan.segments.map((s, i) => (
+        <div className="connection-segment" key={`${s.mode}-${i}`}>
+          <span className="connection-segment-mode">
+            {s.mode === 'WALKING' ? '步行' : s.title}
           </span>
+          <span className="muted">
+            {s.mode === 'WALKING'
+              ? `${Math.round(s.distanceMeters)} 米`
+              : `${s.geton} → ${s.getoff}${s.stationCount != null ? ` · ${s.stationCount} 站` : ''}`}
+          </span>
+          <span className="connection-segment-time">{durationLabel(s.durationMinutes)}</span>
         </div>
       ))}
     </div>
@@ -184,7 +210,7 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
                       {transit.plan.fareFen != null && ` · ${priceLabel(yuanOfFen(transit.plan.fareFen))}`}
                     </span>
                   </div>
-                  <TransitLines plan={transit.plan} />
+                  <TransitSegments plan={transit.plan} />
                 </div>
               )}
               {driving.kind === 'plan' && (

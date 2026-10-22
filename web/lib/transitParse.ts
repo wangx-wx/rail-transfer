@@ -68,6 +68,25 @@ export interface TransitLine {
   runningStatus: number | null;
 }
 
+/**
+ * 公交方案里的一段（D78）。
+ *
+ * 步行段只有距离与时长——上游 `WALKING` 步骤不含起止站名，不编造。
+ * 乘车段才带线路名、上下车站、经停站数。
+ */
+export interface TransitSegment {
+  mode: 'WALKING' | 'TRANSIT';
+  /** 分钟 */
+  durationMinutes: number;
+  /** 米 */
+  distanceMeters: number;
+  /** 以下仅乘车段有 */
+  title?: string;
+  geton?: string;
+  getoff?: string;
+  stationCount?: number;
+}
+
 /** 解析后的公交方案（取最快那条；T57：步行与换乘次数需自算） */
 export interface TransitPlan {
   /** 总耗时（分钟） */
@@ -83,6 +102,16 @@ export interface TransitPlan {
   /** 是否有轨道交通（地铁或火车）——D73「无地铁」标签用 */
   hasSubway: boolean;
   lines: TransitLine[];
+  /**
+   * 逐段明细（D78）：步行段与乘车段按顺序排列。
+   *
+   * 与 `lines` 并存——`lines` 是「坐了哪几条线」的汇总，`segments` 是
+   * 「每一段各多久」的时间线，两者回答不同问题，不互相替代。
+   *
+   * 解析层恒产出该字段；标为可选是为了让手写 `TransitPlan` 的调用方
+   * （测试、兜底路径）不必伪造一份空数组。
+   */
+  segments?: TransitSegment[];
 }
 
 /** 解析公交响应的每条方案（保持上游顺序；取最快由 `pickFastestTransit` 负责） */
@@ -95,10 +124,17 @@ export function parseTransitRoutes(
     let rideSegments = 0;
     let hasSubway = false;
     const lines: TransitLine[] = [];
+    const segments: TransitSegment[] = [];
 
     for (const s of steps) {
       if (s.mode === 'WALKING') {
         walkMeters += s.distance ?? 0;
+        // D78：步行段的时长也要留下——用户要知道时间花在哪
+        segments.push({
+          mode: 'WALKING',
+          durationMinutes: s.duration ?? 0,
+          distanceMeters: s.distance ?? 0,
+        });
         continue;
       }
       const segLines = s.lines ?? [];
@@ -108,13 +144,23 @@ export function parseTransitRoutes(
       // 不是顺序乘坐；展开成顺序线路会误导，也会把换乘次数算多。
       for (const l of segLines.slice(0, 1)) {
         if (l.vehicle === 'SUBWAY' || l.vehicle === 'RAIL') hasSubway = true;
-        lines.push({
+        const line: TransitLine = {
           vehicle: l.vehicle,
           title: l.title ?? '',
           geton: l.geton?.title ?? '',
           getoff: l.getoff?.title ?? '',
           stationCount: l.station_count ?? null,
           runningStatus: l.running_status ?? null,
+        };
+        lines.push(line);
+        segments.push({
+          mode: 'TRANSIT',
+          durationMinutes: l.duration ?? 0,
+          distanceMeters: l.distance ?? 0,
+          title: line.title,
+          geton: line.geton,
+          getoff: line.getoff,
+          stationCount: line.stationCount ?? undefined,
         });
       }
     }
@@ -127,6 +173,7 @@ export function parseTransitRoutes(
       transfers: Math.max(0, rideSegments - 1),
       hasSubway,
       lines,
+      segments,
     };
   });
 }

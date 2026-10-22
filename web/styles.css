@@ -157,3 +157,32 @@
 .connection-lines { display: grid; gap: 2px; }
 .connection-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .connection-line-title { font-weight: 500; }
+/* D78 逐段明细：方式 | 起止 | 时长。时长靠右，竖读可比 */
+.connection-segments { display: grid; gap: 2px; }
+.connection-segment {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+}
+.connection-segment-mode {
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.connection-segment-time {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 380px) {
+  /* 窄屏：方式与时长同行，起止独占一行 */
+  .connection-segment {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "mode time" "detail detail";
+  }
+  .connection-segment-mode { grid-area: mode; }
+  .connection-segment-time { grid-area: time; }
+  .connection-segment > .muted { grid-area: detail; }
+}
