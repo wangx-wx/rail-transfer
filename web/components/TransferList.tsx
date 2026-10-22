@@ -189,10 +189,20 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, conne
           <span className="muted">{p.sameStation ? '同站' : '同城异站'}</span>
           <div className="seat-list">
             {p.legs.map((leg, index) => {
-              const entries = Object.entries(leg.seats).filter(([, raw]) => raw && raw !== '--');
-              const seat = entries.find(([code]) => code === 'ZE') ?? entries[0];
-              const label = seat ? seatLabel(LEG_SEAT_NAMES[seat[0]] ?? seat[0], seat[1]) : null;
-              return <span key={index} className={`seat-label seat-${label?.state ?? 'off'}`}>第{index + 1}程 {label?.text ?? '暂无余票信息'}</span>;
+              // D77：每个席别都渲染——「无」本身是信息，不能因为无票就隐藏。
+              // `'--'` 已在解析层归一为 undefined，这里只需过滤空值。
+              const labels = Object.entries(leg.seats)
+                .map(([code, raw]) => seatLabel(LEG_SEAT_NAMES[code] ?? code, raw))
+                .filter((x) => x != null);
+              return labels.length ? (
+                labels.map((label, i) => (
+                  <span key={`${index}-${i}`} className={`seat-label seat-${label!.state}`}>
+                    第{index + 1}程 {label!.text}
+                  </span>
+                ))
+              ) : (
+                <span key={index} className="seat-label seat-off">第{index + 1}程 暂无余票信息</span>
+              );
             })}
           </div>
           {flags.length > 0 && <Space size={4} wrap>{flags.map((flag) => <Tag className="wrapping-tag" key={flag.label} color={FLAG_COLOR[flag.kind]}>{flag.label}</Tag>)}</Space>}

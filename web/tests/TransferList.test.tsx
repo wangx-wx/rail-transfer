@@ -162,6 +162,38 @@ test('TransferList：低于下限 / 超长等待标记', () => {
   expect(screen.getByText('低于换乘下限')).toBeTruthy();
 });
 
+// ── D77 席别全渲染：每程的每个席别都要出现，不只挑一个 ──────
+test('TransferList：每程全部席别都渲染，不因无票而隐藏（D77）', () => {
+  const p = plan();
+  p.legs[0] = { ...p.legs[0]!, seats: { ZE: '有', ZY: '12', SWZ: '无', WZ: '有' } };
+  p.legs[1] = { ...p.legs[1]!, seats: { ZE: '无', ZY: '有' } };
+  render(<TransferList groups={groups([p])} {...priceProps} />);
+
+  // 第 1 程：四个席别都在
+  expect(screen.getByText('第1程 二等座 有')).toBeTruthy();
+  expect(screen.getByText('第1程 一等座 12 张')).toBeTruthy();
+  expect(screen.getByText('第1程 商务座 无')).toBeTruthy();
+  expect(screen.getByText('第1程 无座 有')).toBeTruthy();
+
+  // 第 2 程：两个席别都在
+  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
+  expect(screen.getByText('第2程 一等座 有')).toBeTruthy();
+});
+
+test('TransferList：普速车席别用中文名，不显示原始码（D77）', () => {
+  const p = plan();
+  p.legs[0] = { ...p.legs[0]!, seats: { RW: '1', YW: '14', YZ: '有', GR: '无' } };
+  p.legs[1] = { ...p.legs[1]!, seats: {} };
+  render(<TransferList groups={groups([p])} {...priceProps} />);
+
+  expect(screen.getByText('第1程 软卧 1 张')).toBeTruthy();
+  expect(screen.getByText('第1程 硬卧 14 张')).toBeTruthy();
+  expect(screen.getByText('第1程 硬座 有')).toBeTruthy();
+  expect(screen.getByText('第1程 高级软卧 无')).toBeTruthy();
+  // 不能出现原始码
+  expect(screen.queryByText(/第1程 RW/)).toBeNull();
+});
+
 test('TransferList：超长等待标记', () => {
   render(<TransferList groups={groups([plan({ waitMinutes: 200 })])} {...priceProps} />);
   expect(screen.getByText('超长等待')).toBeTruthy();

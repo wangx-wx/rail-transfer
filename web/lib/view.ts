@@ -16,6 +16,11 @@ export const LEG_SEAT_NAMES: Record<string, string> = {
   ZY: '一等座',
   SWZ: '商务座',
   WZ: '无座',
+  // D77：普速车席别——此前只有 4 个高铁席别，未映射的码会显示成原始码
+  RW: '软卧',
+  YW: '硬卧',
+  YZ: '硬座',
+  GR: '高级软卧',
 };
 
 /** 站名：优先用映射表，回退站码 */
