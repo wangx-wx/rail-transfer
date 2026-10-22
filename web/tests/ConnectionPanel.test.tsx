@@ -79,7 +79,11 @@ test('ConnectionPanel：摘要给出公交与打车的时间与余量（D72）',
   const { container } = render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
   const rows = [...container.querySelectorAll('.connection-mode')].map((n) => n.textContent?.replace(/\s+/g, ''));
   // 等待 90 分：公交 30 分 → 余 60 分；打车 16 分 → 余 74 分
-  expect(rows).toEqual(['公交30分·余1时', '打车16分·余1时14分']);
+  // D78 起摘要行同时带里程与票价，故断言包含关系而非全等
+  expect(rows[0]).toContain('公交30分');
+  expect(rows[0]).toContain('余1时');
+  expect(rows[1]).toContain('打车16分');
+  expect(rows[1]).toContain('余1时14分');
 });
 
 test('ConnectionPanel：展开后给出线路名、上下车站、步行距离、里程、直线距离（D72）', () => {
@@ -89,8 +93,33 @@ test('ConnectionPanel：展开后给出线路名、上下车站、步行距离�
   // 「菜市口」既是第一段下车站、也是第二段上车站，故两处都在
   expect(screen.getAllByText(/菜市口/).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText(/步行\s*380\s*米/)).toBeTruthy();
-  expect(screen.getByText(/8\.1\s*公里/)).toBeTruthy(); // 8056 米
+  // D78 起里程同时出现在摘要行与详情行，故用 getAllByText
+  expect(screen.getAllByText(/8\.1\s*公里/).length).toBeGreaterThan(0); // 8056 米
   expect(screen.getByText(/直线\s*5\.9\s*公里/)).toBeTruthy();
+});
+
+// ── D78：摘要行要给出时间、里程、票价、余量四项，不用展开 ──
+test('ConnectionPanel：摘要行含公交与打车的里程和票价（D78）', () => {
+  const { container } = render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
+
+  const rows = [...container.querySelectorAll('.connection-mode')].map((n) =>
+    n.textContent?.replace(/\s+/g, ' ').trim(),
+  );
+  // 公交：30分 · 8.1 公里 · ¥4 · 余 1时
+  expect(rows[0]).toContain('8.1 公里');
+  expect(rows[0]).toContain('¥4');
+  expect(rows[0]).toContain('余 1时');
+  // 打车：16分 · 11.1 公里 · 余 1时14分（上游没给车费就不显示价格）
+  expect(rows[1]).toContain('11.1 公里');
+  expect(rows[1]).toContain('余 1时14分');
+});
+
+test('ConnectionPanel：打车上游给了车费时摘要行也显示（D78）', () => {
+  const { container } = render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
+  const rows = [...container.querySelectorAll('.connection-mode')].map((n) =>
+    n.textContent?.replace(/\s+/g, ' ').trim(),
+  );
+  expect(rows[1]).toContain('¥33');
 });
 
 // ── D78：逐段时长——换乘公交时要看得到每一段各需多久 ──────
@@ -134,8 +163,9 @@ test('ConnectionPanel：公交逐段显示时长，步行段也标（D78）', ()
 test('ConnectionPanel：上游给了车费就展示并标「路况估算」（D76）', () => {
   render(<ConnectionPanel point={POINT} result={okResult()} loading={false} onQuery={noop} />);
   fireEvent.click(screen.getByText(/展开详情/));
-  expect(screen.getByText(/¥4/)).toBeTruthy();
-  expect(screen.getByText(/¥33/)).toBeTruthy();
+  // D78 起票价同时出现在摘要行与详情行，故用 getAllByText
+  expect(screen.getAllByText(/¥4/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/¥33/).length).toBeGreaterThan(0);
   expect(screen.getByText(/路况估算/)).toBeTruthy();
 });
 

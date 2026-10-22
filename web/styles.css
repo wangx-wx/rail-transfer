@@ -148,9 +148,28 @@
 .connection-panel { display: grid; gap: 6px; margin-top: 6px; font-size: 13px; }
 .connection-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .connection-pair { color: var(--rail-text); }
-.connection-modes { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.connection-mode { display: inline-flex; gap: 6px; align-items: baseline; font-variant-numeric: tabular-nums; }
+/* D78 摘要：方式 | 耗时 | 里程 | 票价 | 余量。余量靠右，竖读可比 */
+.connection-modes { display: grid; gap: 3px; }
+.connection-mode {
+  display: grid;
+  grid-template-columns: 40px auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
 .connection-mode strong { font-weight: 600; }
+.connection-mode-distance, .connection-mode-fare { color: var(--rail-secondary); }
+.connection-mode-margin { justify-self: end; color: var(--rail-green); font-weight: 500; }
+/* 超时用错误色。antd 的 error 色不在 --rail-* 里，故直接取 tag 的错误色 */
+.connection-mode-margin.is-over { color: #c2261c; }
+[data-theme="dark"] .connection-mode-margin.is-over { color: #ff6b5e; }
+@media (max-width: 380px) {
+  .connection-mode {
+    grid-template-columns: 36px auto auto auto;
+    gap: 6px;
+  }
+  .connection-mode-margin { grid-column: 1 / -1; justify-self: start; }
+}
 .connection-errors { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .connection-details { display: grid; gap: 8px; padding: 8px 0 2px; border-top: 1px solid var(--rail-line); }
 .connection-detail { display: grid; gap: 4px; }

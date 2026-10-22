@@ -45,11 +45,32 @@ function yuanOfFen(fen: number): number {
   return fen / 100;
 }
 
-/** 一条方式的摘要（D72：等待 → 耗时 → 余量） */
-function summaryText(label: string, minutes: number, waitMinutes: number): string {
+/**
+ * 一条方式的摘要（D72 / D78）：时间 · 里程 · 票价 · 余量。
+ *
+ * D78：里程与票价此前只在展开详情里，摘要行看不到——而用户判断「这条
+ * 接驳能不能用」正需要这两项，不该逼人先展开。票价仅在上游给出时显示。
+ */
+function SummaryMode({ label, minutes, meters, fare, waitMinutes }: {
+  label: string;
+  minutes: number;
+  meters: number;
+  fare: number | null;
+  waitMinutes: number;
+}) {
   const margin = waitMinutes - minutes;
-  const tail = margin < 0 ? `超 ${durationLabel(-margin)}` : `余 ${durationLabel(margin)}`;
-  return `${label} ${durationLabel(minutes)} · ${tail}`;
+  const over = margin < 0;
+  return (
+    <div className="connection-mode">
+      <strong>{label}</strong>
+      <span className="connection-mode-time">{durationLabel(minutes)}</span>
+      <span className="connection-mode-distance">{kmLabel(meters)}</span>
+      {fare != null && <span className="connection-mode-fare">{priceLabel(fare)}</span>}
+      <span className={`connection-mode-margin${over ? ' is-over' : ''}`}>
+        {over ? `超 ${durationLabel(-margin)}` : `余 ${durationLabel(margin)}`}
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -167,16 +188,22 @@ export default function ConnectionPanel({ point, result, loading, onQuery }: Pro
 
       <div className="connection-modes">
         {transit.kind === 'plan' && (
-          <div className="connection-mode">
-            <strong>公交</strong>
-            <span>{summaryText('公交', transit.plan.durationMinutes, point.waitMinutes).replace(/^公交\s*/, '')}</span>
-          </div>
+          <SummaryMode
+            label="公交"
+            minutes={transit.plan.durationMinutes}
+            meters={transit.plan.distanceMeters}
+            fare={transit.plan.fareFen != null ? yuanOfFen(transit.plan.fareFen) : null}
+            waitMinutes={point.waitMinutes}
+          />
         )}
         {driving.kind === 'plan' && (
-          <div className="connection-mode">
-            <strong>打车</strong>
-            <span>{summaryText('打车', driving.plan.durationMinutes, point.waitMinutes).replace(/^打车\s*/, '')}</span>
-          </div>
+          <SummaryMode
+            label="打车"
+            minutes={driving.plan.durationMinutes}
+            meters={driving.plan.distanceMeters}
+            fare={driving.plan.fare}
+            waitMinutes={point.waitMinutes}
+          />
         )}
       </div>
 
