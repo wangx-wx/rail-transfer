@@ -131,6 +131,14 @@ test('TrainList：席别全为「无」时仍逐项列出，不折叠成一句�
   expect(screen.queryByText('暂无余票信息')).toBeNull();
 });
 
+// 回归：重排时丢过这一项——「直达列车」是卡片唯一的行程类型标注
+test('TrainList：每趟车标注「直达列车」，与中转结果区分', () => {
+  const { container } = render(
+    <TrainList result={{ trains: [train()], stationMap: {}, date: '2026-10-07' }} {...priceProps} />,
+  );
+  expect(container.querySelector('.direct')?.textContent).toContain('直达列车');
+});
+
 test('TrainList：席别余票展示为标签', () => {
   render(
     <TrainList

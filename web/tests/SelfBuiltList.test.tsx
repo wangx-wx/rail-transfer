@@ -83,6 +83,38 @@ test('SelfBuiltList：三程各占一行，两个换乘断点在中间（D79）'
   expect(body.querySelectorAll(':scope > .node')).toHaveLength(2);
 });
 
+// 回归：标记要挂在**具体那个**换乘点上。旧版按整条行程的布尔值渲染，
+// 两次换乘里只有一处超长等待时，两个断点都会被标——信息没丢但指向错了。
+test('SelfBuiltList：超长等待只标在真正超长的那一处换乘（D79）', () => {
+  const two = journey({
+    transfersCount: 2,
+    longWait: true,
+    transfers: [
+      { station: 'WHN', toStation: 'WHN', waitMinutes: 20, sameStation: true },
+      { station: 'ZAF', toStation: 'ZAF', waitMinutes: 200, sameStation: true },
+    ],
+    legs: [
+      leg('G1101', 'GZQ', 'WHN', '08:00', '11:00', '03:00'),
+      leg('G2202', 'WHN', 'ZAF', '11:20', '13:00', '01:40'),
+      leg('G3303', 'ZAF', 'SNN', '16:20', '18:30', '02:10'),
+    ],
+  });
+  const { container } = render(
+    <SelfBuiltList
+      journeys={[two]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  const nodes = [...container.querySelectorAll('.node')];
+  expect(nodes).toHaveLength(2);
+  expect(nodes[0]!.textContent).not.toContain('超长等待'); // 等待 20 分
+  expect(nodes[1]!.textContent).toContain('超长等待');     // 等待 3时20分
+});
+
 test('SelfBuiltList：换乘断点标出等待时长与站对（D79）', () => {
   const cross = journey({
     transfers: [{ station: 'WHN', toStation: 'WCN', waitMinutes: 70, sameStation: false }],

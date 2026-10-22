@@ -138,6 +138,14 @@ const FLAG_CLASS: Record<FlagKind, string> = {
   ok: '',
 };
 
+/**
+ * 断点上要显示的标记。
+ *
+ * `sameTrain` 已由方案顶部的「接续方式」表达（同车接续 / 换乘一次），
+ * 断点再标一次是重复——去掉，只留与「这次换乘好不好等」相关的三个。
+ */
+const NODE_FLAGS = new Set(['低于换乘下限', '换乘紧张', '超长等待']);
+
 /** 一程（展开后的详情行）：车次、始发终到、各席别价格 */
 function Leg({
   leg,
@@ -177,6 +185,8 @@ function Leg({
         </div>
         {priceItems.length ? (
           <div className="leg-price">
+            {/* 多程并列时靠这一行确认「这份价是哪一程的」 */}
+            <div className="leg-price-head">{leg.trainCode} · {leg.fromStation} → {leg.toStation}</div>
             <div className="price-list" aria-label="各席别价格">
               {priceItems.map((p) => (
                 <div className={`price-row${p.code === REFERENCE_SEAT_CODE ? ' price-row--ref' : ''}`} key={p.code}>
@@ -219,7 +229,7 @@ function TransferNode({ plan: p, connections, loadingConnection, onQueryConnecti
         {p.sameStation ? p.middleStation : `${p.legs[0]?.toStation} → ${p.legs[1]?.fromStation}`}
       </span>
       <span className="node__kind">{p.sameStation ? '同站' : '同城异站'}</span>
-      {flags.map((f) => (
+      {flags.filter((f) => NODE_FLAGS.has(f.label)).map((f) => (
         <span key={f.label} className={`node__flag${FLAG_CLASS[f.kind] ? ` ${FLAG_CLASS[f.kind]}` : ''}`}>{f.label}</span>
       ))}
       <ConnectionEntry plan={p} connections={connections} loadingConnection={loadingConnection} onQueryConnection={onQueryConnection} />
@@ -248,6 +258,7 @@ function TransferCard({ plan: p, date, prices, loadingPrice, onQueryPrice, conne
           {/* 车次链：一程一行后车次已压在各段轨道线上，这里保留一句概览，
               让「G1 → G2」这种整体形状仍能一眼扫到 */}
           <div className="plan__codes">{p.legs.map((l) => l.trainCode).join(' → ')}</div>
+          <div className="plan__kind">{p.sameTrain ? '同车接续' : '换乘一次'}</div>
         </div>
         <div className="plan__sum">
           <span>总 {durationLabel(p.totalMinutes)}</span>

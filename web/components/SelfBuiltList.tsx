@@ -12,7 +12,12 @@ import { Button, Collapse, Empty, Segmented, Space } from 'antd';
 
 import JourneyTimes from './JourneyTimes.tsx';
 import ConnectionPanel from './ConnectionPanel.tsx';
-import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
+import {
+  LONG_WAIT_THRESHOLD,
+  MIN_WAIT_CROSS_STATION,
+  MIN_WAIT_SAME_STATION,
+  REFERENCE_SEAT_CODE,
+} from '../../shared/constants.ts';
 import { dayOffsetAt, durationLabel, priceKey, priceLabel, seatLabel, seatPrices, LEG_SEAT_SHORT } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
 import { sortJourneys, type SortMode } from '../lib/journeys.ts';
@@ -98,24 +103,24 @@ function Leg({ train, no, name }: { train: Train; no: number; name: (code: strin
 function TransferNode({
   transfer,
   name,
-  waitMinutes,
-  risky,
-  longWait,
   connections,
   loadingConnection,
   onQueryConnection,
 }: {
   transfer: ScoredJourney['transfers'][number];
   name: (code: string) => string;
-  waitMinutes: number;
-  risky: boolean;
-  longWait: boolean;
   connections?: Props['connections'];
   loadingConnection?: Props['loadingConnection'];
   onQueryConnection?: Props['onQueryConnection'];
 }) {
   // 行内只报到达站；「到达站 → 下一程出发站」由接驳面板说清（两条通路一致）
   const key = `${transfer.station}>${transfer.toStation}`;
+  // 标记挂在**这一处**换乘上，而不是整条行程的布尔值——两次换乘里只有
+  // 一处超长等待时，按整条行程标会让两个断点都标，指向是错的。
+  const waitMinutes = transfer.waitMinutes;
+  const longWait = waitMinutes > LONG_WAIT_THRESHOLD;
+  // 同站换乘的下限比同城异站低得多，两者不能用同一个阈值
+  const risky = waitMinutes < (transfer.sameStation ? MIN_WAIT_SAME_STATION : MIN_WAIT_CROSS_STATION);
   const waitClass = risky ? 'is-stop' : longWait ? 'is-hold' : 'is-ok';
 
   return (
@@ -209,9 +214,6 @@ function JourneyCard({
             <TransferNode
               transfer={j.transfers[i]!}
               name={name}
-              waitMinutes={j.transfers[i]!.waitMinutes}
-              risky={j.risky}
-              longWait={j.longWait}
               connections={connections}
               loadingConnection={loadingConnection}
               onQueryConnection={onQueryConnection}

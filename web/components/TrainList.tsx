@@ -132,6 +132,7 @@ export default function TrainList({
             <JourneyTimes trainCode={t.trainCode} fromStation={from} toStation={to} startTime={t.startTime} arriveTime={t.arriveTime} duration={t.duration} />
             <div className="direct__foot">
               <div className="direct__seats">
+                <span className="muted">直达列车</span>
                 {seats.length ? seats.map((x) => (
                   <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
                 )) : <span className="seat-label seat-off">暂无余票信息</span>}

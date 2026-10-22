@@ -110,6 +110,15 @@ test('TransferList：多条方案是同一个面的直接子级，行间细线�
   for (const p of plans) expect(p.parentElement?.className).toBe('sheet');
 });
 
+// 回归：重排时丢过这两项——接续方式与「直达列车」一样，是行程类型的标注
+test('TransferList：标出接续方式「换乘一次」/「同车接续」', () => {
+  const { container: c1 } = render(<TransferList groups={groups([plan()])} {...priceProps} />);
+  expect(c1.querySelector('.plan')?.textContent).toContain('换乘一次');
+
+  const { container: c2 } = render(<TransferList groups={groups([plan({ sameTrain: true })])} {...priceProps} />);
+  expect(c2.querySelector('.plan')?.textContent).toContain('同车接续');
+});
+
 test('TransferList：同城异站换乘断点标出「到达站 → 出发站」（D79）', () => {
   const { container } = render(<TransferList groups={groups([crossPlan()])} {...priceProps} />);
   const node = container.querySelector('.node')!;
@@ -357,6 +366,20 @@ test('TransferList：每程价格按固定席别序排成多行表格（方案1�
     .toEqual(['¥900', '¥450', '¥300']);
   // 第二程只有二等座
   expect([...lists[1]!.querySelectorAll('.price-name')].map((n) => n.textContent)).toEqual(['二等座']);
+});
+
+// 回归：价格小表的标题行在多程并列时指明「这份价是哪一程的」
+test('TransferList：价格小表带标题行，标明车次与上下车站', () => {
+  const { container } = render(
+    <TransferList
+      groups={groups([plan()])}
+      {...priceProps}
+      prices={{ '1|01|05': { O: 300 }, '2|01|04': { O: 280 } }}
+    />,
+  );
+  expandDetails();
+  const heads = [...container.querySelectorAll('.leg-price-head')].map((n) => n.textContent);
+  expect(heads).toEqual(['G1 · 北京南 → 南京南', 'G2 · 南京南 → 上海虹桥']);
 });
 
 // ── 方案B 分组面板：每程价格独立成卡 ──────────────────────
