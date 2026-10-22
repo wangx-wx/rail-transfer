@@ -129,15 +129,18 @@ export default function TrainList({
 
         return (
           <div key={`${t.trainCode}-${t.fromStation}-${t.toStation}`} className="direct">
+            {/* 行程元信息：类型 + 始发/终到标注。放行程段上方，不占席别行的位置
+                （窄屏下放席别行首会把「二等座」挤到第二行） */}
+            <div className="direct__meta">
+              <span className="plan__kind">直达列车</span>
+              {via.length > 0 && <span className="plan__kind">{via.join(' · ')}</span>}
+            </div>
             <JourneyTimes trainCode={t.trainCode} fromStation={from} toStation={to} startTime={t.startTime} arriveTime={t.arriveTime} duration={t.duration} />
             <div className="direct__foot">
               <div className="direct__seats">
-                <span className="muted">直达列车</span>
                 {seats.length ? seats.map((x) => (
                   <span key={x.key} className={`seat-label seat-${x.label!.state}`}>{x.label!.text}</span>
                 )) : <span className="seat-label seat-off">暂无余票信息</span>}
-                {/* 始发/终到与上下车不同时标注（D9） */}
-                {via.length > 0 && <span className="muted">{via.join(' · ')}</span>}
               </div>
               <div className="direct__act">
                 {priceItems.length ? priceItems.map((p) => (
