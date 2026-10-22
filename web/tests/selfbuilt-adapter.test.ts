@@ -53,6 +53,24 @@ test('directTrains：非 OK 响应 → 空数组（不抛错）', async () => {
   expect(await deps.directTrains('O', 'H')).toEqual([]);
 });
 
+// ── D77：自研卡片要显示余票，解析层必须真的带上席别 ──────
+test('directTrains：返回的车次带余票（D77）', async () => {
+  // 第 30 列 = 二等座余票；此前 lite 解析把 seats 恒置为 []
+  const r = row({ trainNo: '1', code: 'G1', from: 'O', to: 'H', start: '08:00', arrive: '09:00', dur: '01:00' });
+  const cols = r.split('|');
+  cols[30] = '12';   // 二等座 12 张
+  cols[31] = '有';   // 一等座 有
+
+  const deps = createSelfBuiltDeps(PARAMS, {
+    fetchImpl: fakeFetch({ '/api/left-ticket': leftBody([cols.join('|')]) }),
+  });
+  const [t] = await deps.directTrains('O', 'H');
+
+  expect(t!.seats.length).toBeGreaterThan(0);
+  expect(t!.seats.find((s) => s.code === 'ZE')?.raw).toBe('12');
+  expect(t!.seats.find((s) => s.code === 'ZY')?.raw).toBe('有');
+});
+
 test('适配层只有 directTrains（T56：stopsOf 已移除，只打一个接口）', async () => {
   const paths: string[] = [];
   const fetchImpl = (async (url: string | URL) => {

@@ -94,6 +94,35 @@ test('SelfBuiltList：疑似绕远显示标记', () => {
   expect(screen.getByText('疑似绕远')).toBeTruthy();
 });
 
+// ── D77：自研卡片也要有余票 ──────────────────────────────
+test('SelfBuiltList：每程余票都要显示（D77）', () => {
+  const j = journey();
+  j.legs[0] = { ...j.legs[0]!, seats: [
+    { code: 'ZE', name: '二等座', available: true, count: 12, raw: '12' },
+    { code: 'ZY', name: '一等座', available: true, count: null, raw: '有' },
+    { code: 'SWZ', name: '商务座', available: false, count: null, raw: '无' },
+  ] };
+  j.legs[1] = { ...j.legs[1]!, seats: [
+    { code: 'ZE', name: '二等座', available: false, count: null, raw: '无' },
+    { code: 'YW', name: '硬卧', available: true, count: 14, raw: '14' },
+  ] };
+  render(
+    <SelfBuiltList
+      journeys={[j]}
+      date="2026-10-08"
+      stationNames={{}}
+      prices={{}}
+      loadingPrice={new Set()}
+      onQueryPrice={noop}
+    />,
+  );
+  expect(screen.getByText('第1程 二等座 12 张')).toBeTruthy();
+  expect(screen.getByText('第1程 一等座 有')).toBeTruthy();
+  expect(screen.getByText('第1程 商务座 无')).toBeTruthy();
+  expect(screen.getByText('第2程 二等座 无')).toBeTruthy();
+  expect(screen.getByText('第2程 硬卧 14 张')).toBeTruthy();
+});
+
 test('SelfBuiltList：空结果给出提示', () => {
   render(
     <SelfBuiltList

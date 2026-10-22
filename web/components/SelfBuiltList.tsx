@@ -11,7 +11,7 @@ import { useState } from 'react';
 import JourneyTimes from './JourneyTimes.tsx';
 import ConnectionPanel from './ConnectionPanel.tsx';
 import { REFERENCE_SEAT_CODE } from '../../shared/constants.ts';
-import { durationLabel, priceKey, priceLabel, seatPrices } from '../lib/view.ts';
+import { durationLabel, priceKey, priceLabel, seatLabel, seatPrices } from '../lib/view.ts';
 import { groupByTransfers, journeyTitle } from '../lib/journeyView.ts';
 import { sortJourneys, type SortMode } from '../lib/journeys.ts';
 import type { ScoredJourney } from '../lib/selfbuilt.ts';
@@ -134,6 +134,23 @@ function JourneyCard({
               </div>
             );
           })}
+          {/* D77：每程余票——自研卡片此前完全不显示，用户看不到有没有票 */}
+          <div className="seat-list">
+            {j.legs.map((leg, index) => {
+              const labels = leg.seats
+                .map((s) => seatLabel(s.name, s.raw))
+                .filter((x) => x != null);
+              return labels.length ? (
+                labels.map((label, i) => (
+                  <span key={`${index}-${i}`} className={`seat-label seat-${label!.state}`}>
+                    第{index + 1}程 {label!.text}
+                  </span>
+                ))
+              ) : (
+                <span key={index} className="seat-label seat-off">第{index + 1}程 暂无余票信息</span>
+              );
+            })}
+          </div>
         </div>
         {(j.detour || j.longWait || j.risky) && (
           <Space size={4} wrap>

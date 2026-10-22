@@ -31,8 +31,9 @@ export function createSelfBuiltDeps(p: SelfBuiltParams, opts: AdapterOptions = {
     async directTrains(from, to): Promise<Train[]> {
       const r = await api.leftTicket({ from, to, date: p.date }, apiOpts);
       if (!r.ok) return [];
-      // 中转算法不读席别，走 lite 跳过 8 个席别对象构造（单次查询解析数万趟车）
-      return parseLeftTicket(r.data, { lite: true }).trains;
+      // D77：卡片要展示每程余票，必须走完整解析。实测单次查询最多 55 趟车、
+      // 自研一次约 1650 趟，构造席别对象为毫秒级，不值得为此加懒加载。
+      return parseLeftTicket(r.data).trains;
     },
   };
 }
