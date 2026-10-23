@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UI 原型 · 12306 查票助手</title>
+<style>
+/* ────────────────────────────────────────────────────────────
+   原型说明：真实数据、真实文案。只验证版式，不含交互逻辑。
+   结构装置 = 时刻表轨道（rail）。它编码真实的行程序列，
+   不是装饰：换乘节点就是轨道上的断点。
+   ──────────────────────────────────────────────────────────── */
+
+:root {
+  --page: #f5f5f7;
+  --surface: #ffffff;
+  --sunken: #fafafc;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #a1a1a6;
+  --line: #e3e3e8;
+  --line-strong: #d2d2d7;
+  --accent: #0071e3;
+  --on: #1a7f45;        /* 有票 */
+  --on-bg: #e8f6ed;
+  --risk: #a8500a;      /* 紧张 */
+  --risk-bg: #fdf0e2;
+  --bad: #c2261c;       /* 无票 / 错过 */
+  --bad-bg: #fdeceb;
+  --radius: 14px;
+  --radius-lg: 18px;
+  --shadow: 0 0 0 .5px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.04);
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+[data-theme="dark"] {
+  --page: #0f0f11;
+  --surface: #1b1b1e;
+  --sunken: #16161a;
+  --text: #f5f5f7;
+  --text-2: #98989d;
+  --text-3: #6c6c70;
+  --line: #2e2e33;
+  --line-strong: #3d3d43;
+  --accent: #4da3ff;
+  --on: #5bd48c;
+  --on-bg: rgba(91,212,140,.12);
+  --risk: #f0a35e;
+  --risk-bg: rgba(240,163,94,.13);
+  --bad: #ff6b5e;
+  --bad-bg: rgba(255,107,94,.13);
+  --shadow: 0 0 0 .5px rgba(255,255,255,.05);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px 32px 96px;
+}
+
+/* ── 顶栏：标题退居次要，查询是主角 ─────────────────────── */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+.wordmark {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -.02em;
+}
+.wordmark small {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-2);
+  letter-spacing: 0;
+}
+.theme-toggle {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 6px 2px;
+  border-radius: 6px;
+}
+.theme-toggle:hover { color: var(--text); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 查询条：一行，标签缩小贴在字段上方 ─────────────────── */
+.search {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 34px minmax(0,1fr) 148px 132px auto;
+  align-items: end;
+  gap: 0 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.field { display: grid; gap: 5px; min-width: 0; }
+.field > label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: .01em;
+  padding-left: 2px;
+}
+.field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  min-width: 0;
+}
+.field input::placeholder { color: var(--text-3); }
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.swap {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 38px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 9px;
+  align-self: end;
+}
+.swap:hover { color: var(--accent); background: var(--sunken); }
+
+.actions { display: flex; gap: 8px; }
+
+button.btn {
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .14s, border-color .14s;
+}
+button.btn:hover { border-color: var(--text-3); }
+button.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.btn--primary:hover { filter: brightness(1.06); }
+
+/* 文字链式操作（接驳、重试）——不与主按钮抢视觉重量 */
+.linkbtn {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.linkbtn:hover { text-decoration: underline; }
+.linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.linkbtn[disabled] { color: var(--text-3); cursor: not-allowed; text-decoration: none; }
+
+/* ── 结果工具条 ─────────────────────────────────────────── */
+.results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 26px 2px 10px;
+  flex-wrap: wrap;
+}
+.results-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.results-title span { font-weight: 400; color: var(--text-2); font-size: 12.5px; }
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+}
+.segmented button {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 5px 11px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+
+/* ── 分组 ───────────────────────────────────────────────── */
+.group { margin-bottom: 8px; }
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 2px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.group-head .caret {
+  color: var(--text-3);
+  font-size: 10px;
+  transition: transform .16s;
+}
+.group-head[aria-expanded="false"] .caret { transform: rotate(-90deg); }
+.group-head .count { font-weight: 400; color: var(--text-2); font-size: 12.5px; }
+
+/* ── 车次卡 ─────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+/* 卡片头注：只放轨道推不出来的派生值（总耗时）。起点终点、车次交给轨道 */
+.card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.card-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.card-meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── 轨道（核心装置）────────────────────────────────────── */
+.rail {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.leg {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(52px, auto) minmax(40px, 1fr) minmax(52px, auto);
+  align-items: center;
+  column-gap: 10px;
+}
+.end { display: grid; gap: 2px; min-width: 0; }
+.end--r { justify-items: end; text-align: right; }
+.end b {
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+.end b sup {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  vertical-align: super;
+  letter-spacing: 0;
+  margin-left: 1px;
+}
+.end span {
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.track {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 2px;
+}
+.track em {
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+}
+.track i {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--line-strong);
+  position: relative;
+}
+.track i::before, .track i::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.track i::before { left: 0; }
+.track i::after { right: 0; }
+.track small {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 换乘节点：轨道在此断开 */
+.node {
+  flex: 0 0 auto;
+  width: 116px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  text-align: center;
+}
+.node-line {
+  width: 100%;
+  height: 0;
+  border-top: 1px dashed var(--line-strong);
+  margin-bottom: 4px;
+}
+.node-wait {
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.node-wait.is-tight { color: var(--risk); }
+.node-wait.is-bad { color: var(--bad); }
+.node-station {
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+.node-tag {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--sunken);
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.node-tag--cross {
+  background: var(--risk-bg);
+  color: var(--risk);
+  border-color: transparent;
+}
+
+/* ── 接驳区：整宽一行，挂在轨道下方 ─────────────────────── */
+.connect {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+}
+.connect-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.connect-row b { color: var(--text); font-weight: 500; }
+/* 每种方式一行：名称 | 耗时 | 里程 | 票价 | 余量。
+   时间、价格、公里数是 D69 的三项硬需求，摘要层必须齐全，不能只在展开里。 */
+.connect-modes { display: grid; gap: 3px; }
+.mode {
+  display: grid;
+  grid-template-columns: 40px auto auto 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.mode b { font-weight: 600; color: var(--text); }
+.mode .dim { color: var(--text-2); }
+.mode .fare { color: var(--text-2); }
+.mode .margin { color: var(--on); justify-self: end; }
+.mode .margin.is-over { color: var(--bad); }
+.mode .margin.is-na { color: var(--text-3); }
+.connect-flag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: var(--risk-bg);
+  color: var(--risk);
+  font-weight: 500;
+}
+.connect-detail {
+  display: grid;
+  gap: 5px;
+  padding: 9px 11px;
+  background: var(--sunken);
+  border-radius: 10px;
+  font-size: 12.5px;
+}
+/* 公交逐段：方式 | 起止 | 时长。三列对齐，时长靠右便于竖读比对 */
+.seg {
+  display: grid;
+  grid-template-columns: 76px minmax(0,1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.seg-mode {
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.seg-mode--rail { color: var(--text); font-weight: 500; }
+.seg-main { color: var(--text-2); overflow-wrap: anywhere; }
+.seg-time {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.seg-sum {
+  margin-top: 4px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 底部：余票 + 价格 ──────────────────────────────────── */
+.card-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+.seats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; }
+.seat { color: var(--text-2); }
+.seat b { color: var(--text); font-weight: 500; }
+.seat.is-on b { color: var(--on); }
+.seat.is-off b { color: var(--text-3); }
+.price { text-align: right; display: grid; gap: 1px; }
+.price b {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.015em;
+}
+.price small { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.price-hint { font-size: 12.5px; color: var(--text-3); }
+
+.details { margin-top: 8px; }
+.details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.details > summary::-webkit-details-marker { display: none; }
+.details > summary::after { content: "+"; font-size: 15px; color: var(--text-3); }
+.details[open] > summary::after { content: "−"; }
+.details-body { display: grid; gap: 14px; padding: 6px 0 2px; }
+
+.leg-detail {
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr);
+  gap: 12px;
+}
+.leg-no {
+  display: grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.leg-detail-body { display: grid; gap: 8px; min-width: 0; }
+.leg-detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.leg-detail-head b { font-size: 14px; font-weight: 600; }
+.leg-detail-head .via {
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.price-table { display: grid; font-size: 12.5px; }
+.price-table div {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+.price-table div:first-child { border-top: 0; }
+.price-table .name { color: var(--text-2); }
+.price-table .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.price-table .ref .name, .price-table .ref .amount { color: var(--accent); }
+
+/* ── H5 ─────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .search {
+    grid-template-columns: minmax(0,1fr) 34px minmax(0,1fr);
+    grid-template-areas:
+      "from swap to"
+      "date date access"
+      "actions actions actions";
+    gap: 12px 10px;
+  }
+  .field--from { grid-area: from; }
+  .swap { grid-area: swap; }
+  .field--to { grid-area: to; }
+  .field--date { grid-area: date; }
+  .field--access { grid-area: access; }
+  .actions { grid-area: actions; }
+  .actions button.btn { flex: 1; }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 20px 12px 72px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .topbar { margin-bottom: 12px; }
+  .wordmark small { display: none; }
+
+  /* 轨道改为纵向：时间轴从上往下 */
+  .rail { flex-direction: column; align-items: stretch; gap: 0; }
+  .leg { grid-template-columns: minmax(58px, auto) minmax(40px, 1fr) minmax(58px, auto); }
+  .node {
+    width: auto;
+    grid-template-columns: auto minmax(0,1fr) auto;
+    justify-items: start;
+    align-items: center;
+    column-gap: 8px;
+    padding: 7px 0;
+    text-align: left;
+  }
+  .node-line { display: none; }
+  .node-wait { font-size: 12px; }
+  .node-station { font-size: 11.5px; }
+  .node-tag { justify-self: end; }
+
+  .card { padding: 13px 13px; }
+  .end b { font-size: 22px; }
+  .card-foot { gap: 10px; }
+  .price { text-align: left; }
+}
+
+@media (max-width: 380px) {
+  .end b { font-size: 20px; }
+  .track small { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <h1 class="wordmark">12306 查票助手 <small>比官方网页给出更多中转方案</small></h1>
+    <button class="theme-toggle" id="theme">深色</button>
+  </div>
+
+  <!-- 查询条 -->
+  <div class="search">
+    <div class="field field--from">
+      <label for="from">出发城市</label>
+      <input id="from" value="北京">
+    </div>
+    <button class="swap" aria-label="对调出发与到达城市">⇄</button>
+    <div class="field field--to">
+      <label for="to">到达城市</label>
+      <input id="to" value="上海">
+    </div>
+    <div class="field field--date">
+      <label for="date">日期</label>
+      <input id="date" value="2026-10-22">
+    </div>
+    <div class="field field--access">
+      <label for="token">口令（可选）</label>
+      <input id="token" type="password" placeholder="未设置">
+    </div>
+    <div class="actions">
+      <button class="btn btn--primary">查直达</button>
+      <button class="btn">查中转</button>
+      <button class="btn">自研中转</button>
+    </div>
+  </div>
+
+  <!-- 中转结果 -->
+  <div class="results-head">
+    <h2 class="results-title">中转方案 <span>234 条 · 经 12 个枢纽</span></h2>
+    <div class="segmented">
+      <button aria-pressed="true">综合推荐</button>
+      <button aria-pressed="false">按总耗时</button>
+    </div>
+  </div>
+
+  <!-- 分组：南京南（同站换乘） -->
+  <div class="group">
+    <button class="group-head" aria-expanded="true">
+      <span class="caret">▼</span> 南京南 <span class="count">10 个方案</span>
+    </button>
+
+    <div class="card">
+      <div class="rail">
+        <div class="leg">
+          <div class="end"><b>17:00</b><span>北京南</span></div>
+          <div class="track"><em>G25</em><i></i><small>4时18分</small></div>
+          <div class="end end--r"><b>21:18</b><span>上海虹桥</span></div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div class="seats">
+          <span class="seat is-on">第1程 二等座 <b>有</b></span>
+          <span class="seat is-on">第2程 二等座 <b>有</b></span>
+          <span class="seat">同车接续 · 南京南</span>
+        </div>
+        <div class="price">
+          <b>二等座参考价 ¥694</b>
+          <small>¥532 + ¥162</small>
+        </div>
+      </div>
+      <details class="details">
+        <summary>两程详情</summary>
+        <div class="details-body">
+          <div class="leg-detail">
+            <span class="leg-no">1</span>
+            <div class="leg-detail-body">
+              <div class="leg-detail-head"><b>G25</b><span class="via">始发 北京南</span></div>
+              <div class="price-table">
+                <div class="ref"><span class="name">二等座</span><span class="amount">¥532</span></div>
+                <div><span class="name">一等座</span><span class="amount">¥891</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="leg-detail">
+            <span class="leg-no">2</span>
+            <div class="leg-detail-body">
+              <div class="leg-detail-head"><b>G25</b><span class="via">终到 上海虹桥</span></div>
+              <div class="price-table">
+                <div class="ref"><span class="name">二等座</span><span class="amount">¥162</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <div class="rail">
+        <div class="leg">
+          <div class="end"><b>19:24</b><span>北京南</span></div>
+          <div class="track"><em>G35</em><i></i><small>4时27分</small></div>
+          <div class="end end--r"><b>23:51</b><span>上海虹桥</span></div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div class="seats">
+          <span class="seat is-on">第1程 二等座 <b>12 张</b></span>
+          <span class="seat is-off">第2程 二等座 <b>无</b></span>
+        </div>
+        <div class="price"><span class="price-hint">展开两程查价</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分组：武汉-汉口（同城异站，已查接驳） -->
+  <div class="group">
+    <button class="group-head" aria-expanded="true">
+      <span class="caret">▼</span> 武汉-汉口 <span class="count">2 个方案</span>
+    </button>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-meta"><span>总耗时 <b>10时20分</b></span></div>
+      </div>
+
+      <div class="rail">
+        <div class="leg">
+          <div class="end"><b>08:05</b><span>北京西</span></div>
+          <div class="track"><em>G333</em><i></i><small>6时15分</small></div>
+          <div class="end end--r"><b>14:20</b><span>武汉</span></div>
+        </div>
+        <div class="node">
+          <div class="node-line"></div>
+          <div class="node-wait">1时35分</div>
+          <div class="node-station">武汉 → 汉口</div>
+          <div class="node-tag node-tag--cross">同城异站</div>
+        </div>
+        <div class="leg">
+          <div class="end"><b>16:00</b><span>汉口</span></div>
+          <div class="track"><em>D958</em><i></i><small>2时25分</small></div>
+          <div class="end end--r"><b>18:25</b><span>上海</span></div>
+        </div>
+      </div>
+
+      <div class="connect">
+        <div class="connect-row">
+          <b>接驳 武汉 → 汉口</b>
+          <span class="connect-flag">接驳紧张</span>
+          <button class="linkbtn">收起</button>
+        </div>
+        <div class="connect-modes">
+          <span class="mode">
+            <b>公交</b><span>48分</span><span class="dim">9.2 公里</span><span class="fare">¥3</span>
+            <span class="margin">余 47分</span>
+          </span>
+          <!-- 打车价上游没给就不占位（D76）；过路费 > 0 才单独出现 -->
+          <span class="mode">
+            <b>打车</b><span>22分</span><span class="dim">11.4 公里</span><span class="fare"></span>
+            <span class="margin">余 1时13分</span>
+          </span>
+        </div>
+        <div class="connect-detail">
+          <!-- 公交逐段：每段都有时长，步行段也标 -->
+          <!-- 步行段上游只有距离与时长，没有起止名——不编造路径 -->
+          <div class="seg">
+            <span class="seg-mode">步行</span>
+            <span class="seg-main">340 米</span>
+            <span class="seg-time">5分</span>
+          </div>
+          <div class="seg">
+            <span class="seg-mode seg-mode--rail">地铁2号线</span>
+            <span class="seg-main">汉口火车站 → 循礼门 · 3 站</span>
+            <span class="seg-time">11分</span>
+          </div>
+          <div class="seg">
+            <span class="seg-mode">步行</span>
+            <span class="seg-main">180 米</span>
+            <span class="seg-time">4分</span>
+          </div>
+          <div class="seg">
+            <span class="seg-mode seg-mode--rail">地铁1号线</span>
+            <span class="seg-main">循礼门 → 大智路 · 2 站</span>
+            <span class="seg-time">9分</span>
+          </div>
+          <div class="seg">
+            <span class="seg-mode">步行</span>
+            <span class="seg-main">620 米</span>
+            <span class="seg-time">12分</span>
+          </div>
+          <!-- 汇总只补摘要行没给的：步行合计与换乘次数 -->
+          <div class="seg-sum">步行合计 1.1 公里 · 换乘 1 次</div>
+        </div>
+      </div>
+
+      <div class="card-foot">
+        <div class="seats">
+          <span class="seat is-on">第1程 二等座 <b>有</b></span>
+          <span class="seat is-on">第2程 二等座 <b>有</b></span>
+        </div>
+        <div class="price">
+          <b>二等座参考价 ¥618</b>
+          <small>¥309 + ¥309</small>
+        </div>
+      </div>
+      <details class="details">
+        <summary>两程详情</summary>
+        <div class="details-body">
+          <div class="leg-detail">
+            <span class="leg-no">1</span>
+            <div class="leg-detail-body">
+              <div class="leg-detail-head"><b>G333</b></div>
+              <div class="price-table">
+                <div class="ref"><span class="name">二等座</span><span class="amount">¥309</span></div>
+                <div><span class="name">一等座</span><span class="amount">¥494</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="leg-detail">
+            <span class="leg-no">2</span>
+            <div class="leg-detail-body">
+              <div class="leg-detail-head"><b>D958</b></div>
+              <div class="price-table">
+                <div class="ref"><span class="name">二等座</span><span class="amount">¥309</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- 未查接驳 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-meta"><span>总耗时 <b>11时1分</b></span></div>
+      </div>
+      <div class="rail">
+        <div class="leg">
+          <div class="end"><b>07:05</b><span>北京西</span></div>
+          <div class="track"><em>G307</em><i></i><small>6时2分</small></div>
+          <div class="end end--r"><b>13:07</b><span>武汉</span></div>
+        </div>
+        <div class="node">
+          <div class="node-line"></div>
+          <div class="node-wait is-tight">2时7分</div>
+          <div class="node-station">武汉 → 汉口</div>
+          <div class="node-tag node-tag--cross">同城异站</div>
+        </div>
+        <div class="leg">
+          <div class="end"><b>15:14</b><span>汉口</span></div>
+          <div class="track"><em>G678</em><i></i><small>2时52分</small></div>
+          <div class="end end--r"><b>18:06</b><span>上海虹桥</span></div>
+        </div>
+      </div>
+      <div class="connect">
+        <div class="connect-row">
+          <b>接驳 武汉 → 汉口</b>
+          <span>还没查</span>
+          <button class="linkbtn">查接驳</button>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div class="seats">
+          <span class="seat is-on">第1程 二等座 <b>有</b></span>
+          <span class="seat is-on">第2程 二等座 <b>有</b></span>
+          <span class="seat">超长等待</span>
+        </div>
+        <div class="price"><span class="price-hint">展开两程查价</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分组：合肥西-合肥（缺坐标） -->
+  <div class="group">
+    <button class="group-head" aria-expanded="true">
+      <span class="caret">▼</span> 合肥西-合肥 <span class="count">1 个方案</span>
+    </button>
+    <div class="card">
+      <div class="card-top">
+        <div class="card-meta"><span>总耗时 <b>8时26分</b></span></div>
+      </div>
+      <div class="rail">
+        <div class="leg">
+          <div class="end"><b>11:00</b><span>大兴机场</span></div>
+          <div class="track"><em>G3939</em><i></i><small>5时10分</small></div>
+          <div class="end end--r"><b>16:10</b><span>合肥西</span></div>
+        </div>
+        <div class="node">
+          <div class="node-line"></div>
+          <div class="node-wait">1时31分</div>
+          <div class="node-station">合肥西 → 合肥</div>
+          <div class="node-tag node-tag--cross">同城异站</div>
+        </div>
+        <div class="leg">
+          <div class="end"><b>17:41</b><span>合肥</span></div>
+          <div class="track"><em>G470</em><i></i><small>1时45分</small></div>
+          <div class="end end--r"><b>19:26</b><span>上海虹桥</span></div>
+        </div>
+      </div>
+      <div class="connect">
+        <div class="connect-row">
+          <b>接驳 合肥西 → 合肥</b>
+          <span>未获取到站点位置</span>
+          <button class="linkbtn" disabled>查接驳</button>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div class="seats">
+          <span class="seat is-on">第1程 二等座 <b>有</b></span>
+          <span class="seat is-on">第2程 二等座 <b>有</b></span>
+        </div>
+        <div class="price"><span class="price-hint">展开两程查价</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 接驳的全部降级分支（D74）：每种都要有版式，不能落地时现编 ── -->
+  <div class="results-head">
+    <h2 class="results-title">接驳状态 · 全部降级分支</h2>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>① 跨城（D75）</b>
+        <span>武汉 → 长沙 · 直线约 118 公里 · 不提供市内交通方案</span>
+        <span class="connect-flag">跨城接驳</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>② 查不到方案（D74）</b>
+        <span>暂未获取到接驳方案（直线 6.4 公里）</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>③ 网络失败 · 可重试</b>
+        <span>公交：接驳查询失败</span>
+        <span>打车：接驳查询失败</span>
+        <button class="linkbtn">重试</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>④ 业务性失败 · 不给重试</b>
+        <span>公交：腾讯不支持该城市的公交查询</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑤ 一端有方案 · 另一端报错</b>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>公交</b><span class="dim">腾讯不支持该城市的公交查询</span><span></span><span></span><span></span>
+        </span>
+        <span class="mode">
+          <b>打车</b><span>18分</span><span class="dim">8.6 公里</span><span class="fare">¥29</span>
+          <span class="margin">余 22分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑥ 需打车 · 公交赶不上但打车赶上</b>
+        <span class="connect-flag">需打车</span>
+        <button class="linkbtn">展开详情</button>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>公交</b><span>52分</span><span class="dim">10.2 公里</span><span class="fare">¥4</span>
+          <span class="margin is-over">超 6分</span>
+        </span>
+        <span class="mode">
+          <b>打车</b><span>19分</span><span class="dim">9.8 公里</span><span class="fare"></span>
+          <span class="margin">余 27分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑦ 接驳紧张 · 最快的方式余量 &lt; 20 分</b>
+        <span class="connect-flag">接驳紧张</span>
+        <button class="linkbtn">展开详情</button>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>公交</b><span>42分</span><span class="dim">8.1 公里</span><span class="fare">¥4</span>
+          <span class="margin">余 12分</span>
+        </span>
+        <span class="mode">
+          <b>打车</b><span>15分</span><span class="dim">7.9 公里</span><span class="fare"></span>
+          <span class="margin">余 39分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑧ 接驳时间不足 · 两种都赶不上</b>
+        <span class="connect-flag" style="background:var(--bad-bg);color:var(--bad)">接驳时间不足</span>
+        <button class="linkbtn">展开详情</button>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>公交</b><span>55分</span><span class="dim">12.4 公里</span><span class="fare">¥5</span>
+          <span class="margin is-over">超 15分</span>
+        </span>
+        <span class="mode">
+          <b>打车</b><span>38分</span><span class="dim">14.1 公里</span><span class="fare"></span>
+          <span class="margin is-over">超 2分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑨ 线路状态异常（可能错过末班 / 首班未发 / 停运）</b>
+        <span class="connect-flag">可能错过末班</span>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>公交</b><span>38分</span><span class="dim">9.0 公里</span><span class="fare">¥3</span>
+          <span class="margin">余 27分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="connect" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="connect-row">
+        <b>⑩ 过路费 &gt; 0 时才出现</b>
+      </div>
+      <div class="connect-modes">
+        <span class="mode">
+          <b>打车</b><span>46分</span><span class="dim">38.2 公里</span><span class="fare">¥126 · 过路费 ¥15</span>
+          <span class="margin">余 1时4分</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 直达结果示例（同一套轨道语言，单段） -->
+  <div class="results-head">
+    <h2 class="results-title">直达车次 <span>54 趟</span></h2>
+  </div>
+  <div class="card">
+    <div class="rail">
+      <div class="leg">
+        <div class="end"><b>06:18</b><span>北京南</span></div>
+        <div class="track"><em>G547</em><i></i><small>05:53</small></div>
+        <div class="end end--r"><b>12:11</b><span>上海虹桥</span></div>
+      </div>
+    </div>
+    <div class="card-foot">
+      <div class="seats">
+        <span class="seat is-off">无座 <b>有</b></span>
+        <span class="seat is-on">商务座 <b>17 张</b></span>
+        <span class="seat is-on">一等座 <b>有</b></span>
+        <span class="seat is-on">二等座 <b>有</b></span>
+      </div>
+      <div class="price"><button class="linkbtn">查价</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="rail">
+      <div class="leg">
+        <div class="end"><b>19:10</b><span>北京南</span></div>
+        <div class="track"><em>G37</em><i></i><small>04:43</small></div>
+        <div class="end end--r"><b>12:35<sup>+1</sup></b><span>杭州东</span></div>
+      </div>
+    </div>
+    <div class="card-foot">
+      <div class="seats">
+        <span class="seat is-off">无座 <b>有</b></span>
+        <span class="seat is-on">商务座 <b>10 张</b></span>
+        <span class="seat is-on">一等座 <b>2 张</b></span>
+        <span class="seat is-on">二等座 <b>有</b></span>
+        <span class="seat">终到 杭州东</span>
+      </div>
+      <div class="price"><button class="linkbtn">查价</button></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // 主题切换（原型用；正式实现跟随系统 + 手动覆盖）
+  const root = document.documentElement;
+  const btn = document.getElementById('theme');
+  const apply = (dark) => {
+    root.dataset.theme = dark ? 'dark' : 'light';
+    btn.textContent = dark ? '浅色' : '深色';
+  };
+  apply(matchMedia('(prefers-color-scheme: dark)').matches);
+  btn.addEventListener('click', () => apply(root.dataset.theme !== 'dark'));
+
+  // 分组折叠（原型用）
+  document.querySelectorAll('.group-head').forEach((h) => {
+    h.addEventListener('click', () => {
+      const open = h.getAttribute('aria-expanded') === 'true';
+      h.setAttribute('aria-expanded', String(!open));
+      h.parentElement.querySelectorAll('.card, .details').forEach((n) => {
+        if (n.classList.contains('details')) return;
+        n.style.display = open ? 'none' : '';
+      });
+    });
+  });
+</script>
+</body>
+</html>
